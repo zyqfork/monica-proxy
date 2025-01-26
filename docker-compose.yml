@@ -9,6 +9,7 @@ services:
     command: ["./monica"]
     environment:
       - MONICA_COOKIE=${MONICA_COOKIE}
+      - BEARER_TOKEN=${BEARER_TOKEN}
 
   nginx:
     image: nginx:latest

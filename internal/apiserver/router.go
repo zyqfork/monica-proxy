@@ -3,6 +3,7 @@ package apiserver
 import (
 	"encoding/json"
 	"log"
+	"monica-proxy/internal/middleware"
 	"monica-proxy/internal/monica"
 	"monica-proxy/internal/types"
 	"net/http"
@@ -13,6 +14,9 @@ import (
 
 // RegisterRoutes 注册 Echo 路由
 func RegisterRoutes(e *echo.Echo) {
+	// 添加Bearer Token认证中间件
+	e.Use(middleware.BearerAuth())
+
 	// ChatGPT 风格的请求转发到 /v1/chat/completions
 	e.POST("/v1/chat/completions", handleChatCompletion)
 }

@@ -11,6 +11,7 @@ var MonicaConfig *Config
 // Config 存储应用配置
 type Config struct {
 	MonicaCookie string
+	BearerToken  string
 }
 
 // LoadConfig 从环境变量加载配置
@@ -20,6 +21,7 @@ func LoadConfig() *Config {
 
 	MonicaConfig = &Config{
 		MonicaCookie: os.Getenv("MONICA_COOKIE"),
+		BearerToken:  os.Getenv("BEARER_TOKEN"),
 	}
 	return MonicaConfig
 }
