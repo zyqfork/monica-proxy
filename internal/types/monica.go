@@ -25,7 +25,8 @@ const (
 const (
 	BotChatURL    = "https://api.monica.im/api/custom_bot/chat"
 	PreSignURL    = "https://api.monica.im/api/file_object/pre_sign_list_by_module"
-	FileUploadURL = "https://api.monica.im/api/file_object/create_by_object_url"
+	FileUploadURL = "https://api.monica.im/api/files/batch_create_llm_file"
+	FileGetURL    = "https://api.monica.im/api/files/batch_get_file"
 )
 
 // 图片相关常量
@@ -74,16 +75,18 @@ type MonicaRequest struct {
 
 // DataField 在 Monica 的 body 中
 type DataField struct {
-	ConversationID string `json:"conversation_id"`
-	Items          []Item `json:"items"`
-	TriggerBy      string `json:"trigger_by"`
-	UseModel       string `json:"use_model;omitempty"`
-	IsIncognito    bool   `json:"is_incognito"`
-	UseNewMemory   bool   `json:"use_new_memory"`
+	ConversationID  string `json:"conversation_id"`
+	PreParentItemID string `json:"pre_parent_item_id"`
+	Items           []Item `json:"items"`
+	TriggerBy       string `json:"trigger_by"`
+	UseModel        string `json:"use_model,omitempty"`
+	IsIncognito     bool   `json:"is_incognito"`
+	UseNewMemory    bool   `json:"use_new_memory"`
 }
 
 type Item struct {
 	ConversationID string      `json:"conversation_id"`
+	ParentItemID   string      `json:"parent_item_id,omitempty"`
 	ItemID         string      `json:"item_id"`
 	ItemType       string      `json:"item_type"`
 	Data           ItemContent `json:"data"`
@@ -126,13 +129,18 @@ type PreSignResponse struct {
 
 // FileInfo 文件信息
 type FileInfo struct {
-	URL          string                 `json:"url"`
-	Parse        bool                   `json:"parse"`
-	FileName     string                 `json:"file_name"`
-	FileSize     int64                  `json:"file_size"`
-	FileType     string                 `json:"file_type"`
-	ObjectURL    string                 `json:"object_url"`
-	Embedding    bool                   `json:"embedding"`
+	URL        string `json:"url,omitempty"`
+	FileURL    string `json:"file_url"`
+	FileUID    string `json:"file_uid"`
+	Parse      bool   `json:"parse"`
+	FileName   string `json:"file_name"`
+	FileSize   int64  `json:"file_size"`
+	FileType   string `json:"file_type"`
+	FileExt    string `json:"file_ext"`
+	FileTokens int64  `json:"file_tokens"`
+	FileChunks int64  `json:"file_chunks"`
+	ObjectURL  string `json:"object_url,omitempty"`
+	//Embedding    bool                   `json:"embedding"`
 	FileMetaInfo map[string]interface{} `json:"file_meta_info,omitempty"`
 	UseFullText  bool                   `json:"use_full_text"`
 }
@@ -148,8 +156,36 @@ type FileUploadResponse struct {
 	Msg  string `json:"msg"`
 	Data struct {
 		Items []struct {
-			FileUID string `json:"file_uid"`
+			FileName   string `json:"file_name"`
+			FileType   string `json:"file_type"`
+			FileSize   int64  `json:"file_size"`
+			FileUID    string `json:"file_uid"`
+			FileTokens int64  `json:"file_tokens"`
+			FileChunks int64  `json:"file_chunks"`
 			// 其他字段暂时不需要
+		} `json:"items"`
+	} `json:"data"`
+}
+
+// FileBatchGetResponse 获取文件llm处理是否完成
+type FileBatchGetResponse struct {
+	Data struct {
+		Items []struct {
+			FileName     string `json:"file_name"`
+			FileType     string `json:"file_type"`
+			FileSize     int    `json:"file_size"`
+			ObjectUrl    string `json:"object_url"`
+			Url          string `json:"url"`
+			FileMetaInfo struct {
+			} `json:"file_meta_info"`
+			DriveFileUid  string `json:"drive_file_uid"`
+			FileUid       string `json:"file_uid"`
+			IndexState    int    `json:"index_state"`
+			IndexDesc     string `json:"index_desc"`
+			ErrorMessage  string `json:"error_message"`
+			FileTokens    int64  `json:"file_tokens"`
+			FileChunks    int64  `json:"file_chunks"`
+			IndexProgress int    `json:"index_progress"`
 		} `json:"items"`
 	} `json:"data"`
 }
@@ -165,7 +201,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 
 	// 转换消息
 
-	// 设置默认欢迎消息头
+	// 设置默认欢迎消息头，不加上就有几率去掉问题最后的十几个token，不清楚是不是bug
 	defaultItem := Item{
 		ItemID:         fmt.Sprintf("msg:%s", uuid.New().String()),
 		ConversationID: conversationID,
@@ -174,6 +210,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 	}
 	var items = make([]Item, 1, len(chatReq.Messages))
 	items[0] = defaultItem
+	preItemID := defaultItem.ItemID
 
 	for _, msg := range chatReq.Messages {
 		if msg.Role == "system" {
@@ -195,14 +232,14 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		itemID := fmt.Sprintf("msg:%s", uuid.New().String())
 		itemType := "question"
 		if msg.Role == "assistant" {
-			itemType = "answer"
+			itemType = "reply"
 		}
 
 		var content ItemContent
 		if len(imgUrl) > 0 {
 			ctx := context.Background()
 			fileIfoList := lop.Map(imgUrl, func(item *openai.ChatMessageImageURL, _ int) FileInfo {
-				f, err := UploadImage(ctx, item.URL)
+				f, err := UploadBase64Image(ctx, item.URL)
 				if err != nil {
 					log.Println(err)
 					return FileInfo{}
@@ -227,10 +264,12 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		item := Item{
 			ConversationID: conversationID,
 			ItemID:         itemID,
+			ParentItemID:   preItemID,
 			ItemType:       itemType,
 			Data:           content,
 		}
 		items = append(items, item)
+		preItemID = itemID
 	}
 
 	// 构建请求
@@ -238,11 +277,13 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		TaskUID: fmt.Sprintf("task:%s", uuid.New().String()),
 		BotUID:  modelToBot(chatReq.Model),
 		Data: DataField{
-			ConversationID: conversationID,
-			Items:          items,
-			TriggerBy:      "auto",
-			IsIncognito:    true,
-			UseNewMemory:   true,
+			ConversationID:  conversationID,
+			Items:           items,
+			PreParentItemID: preItemID,
+			TriggerBy:       "auto",
+			IsIncognito:     true,
+			UseModel:        "claude-3", //TODO 好像写啥都没影响
+			UseNewMemory:    false,
 		},
 		Language: "auto",
 		TaskType: "chat",

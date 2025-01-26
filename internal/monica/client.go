@@ -12,7 +12,7 @@ import (
 // SendMonicaRequest 发起对 Monica AI 的请求(使用 resty)
 func SendMonicaRequest(ctx context.Context, mReq *types.MonicaRequest) (*resty.Response, error) {
 	// 发起请求
-	resp, err := utils.RestyClient.R().
+	resp, err := utils.RestySSEClient.R().
 		SetContext(ctx).
 		SetHeader("cookie", config.MonicaConfig.MonicaCookie).
 		SetBody(mReq).
