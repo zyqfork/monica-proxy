@@ -19,6 +19,8 @@ func RegisterRoutes(e *echo.Echo) {
 
 	// ChatGPT 风格的请求转发到 /v1/chat/completions
 	e.POST("/v1/chat/completions", handleChatCompletion)
+	// 获取支持的模型列表
+	e.GET("/v1/models", handleListModels)
 }
 
 // handleChatCompletion 接收 ChatGPT 形式的对话请求并转发给 Monica
@@ -72,4 +74,10 @@ func handleChatCompletion(c echo.Context) error {
 	}
 
 	return nil
+}
+
+// handleListModels 返回支持的模型列表
+func handleListModels(c echo.Context) error {
+	models := types.GetSupportedModels()
+	return c.JSON(http.StatusOK, models)
 }

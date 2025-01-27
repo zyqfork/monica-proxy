@@ -4,23 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	lop "github.com/samber/lo/parallel"
 	"log"
 	"strings"
+
+	lop "github.com/samber/lo/parallel"
 
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
 )
 
-const (
-	MonicaModelGPT4o        = "gpt-4o"
-	MonicaModelGPT4oMini    = "gpt-4o-mini"
-	MonicaModelClaudeSonnet = "claude-3"
-	MonicaModelClaudeHaiku  = "claude-3.5-haiku"
-	MonicaModelGemini2      = "gemini_2_0"
-	MonicaModelO1Preview    = "openai_o_1"
-	MonicaModelO1Mini       = "openai-o-1-mini"
-)
+//const (
+//	MonicaModelGPT4o        = "gpt-4o"
+//	MonicaModelGPT4oMini    = "gpt-4o-mini"
+//	MonicaModelClaudeSonnet = "claude-3"
+//	MonicaModelClaudeHaiku  = "claude-3.5-haiku"
+//	MonicaModelGemini2      = "gemini_2_0"
+//	MonicaModelO1Preview    = "openai_o_1"
+//	MonicaModelO1Mini       = "openai-o-1-mini"
+//)
 
 const (
 	BotChatURL    = "https://api.monica.im/api/custom_bot/chat"
@@ -190,6 +191,40 @@ type FileBatchGetResponse struct {
 	} `json:"data"`
 }
 
+// OpenAIModel represents a model in the OpenAI API format
+type OpenAIModel struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	OwnedBy string `json:"owned_by"`
+}
+
+// OpenAIModelList represents the response format for the /v1/models endpoint
+type OpenAIModelList struct {
+	Object string        `json:"object"`
+	Data   []OpenAIModel `json:"data"`
+}
+
+// GetSupportedModels returns all supported models in OpenAI format
+func GetSupportedModels() OpenAIModelList {
+	models := []OpenAIModel{
+		{ID: "gpt-4o-mini", Object: "model", OwnedBy: "monica"},
+		{ID: "gpt-4o", Object: "model", OwnedBy: "monica"},
+		{ID: "claude-3-5-sonnet", Object: "model", OwnedBy: "monica"},
+		{ID: "claude-3-5-haiku", Object: "model", OwnedBy: "monica"},
+		{ID: "gemini-2.0", Object: "model", OwnedBy: "monica"},
+		{ID: "gemini-1.5", Object: "model", OwnedBy: "monica"},
+		{ID: "o1-mini", Object: "model", OwnedBy: "monica"},
+		{ID: "o1-preview", Object: "model", OwnedBy: "monica"},
+		{ID: "deepseek-reasoner", Object: "model", OwnedBy: "monica"},
+		{ID: "deepseek-chat", Object: "model", OwnedBy: "monica"},
+	}
+
+	return OpenAIModelList{
+		Object: "list",
+		Data:   models,
+	}
+}
+
 // ChatGPTToMonica 将 ChatGPTRequest 转换为 MonicaRequest
 func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, error) {
 	if len(chatReq.Messages) == 0 {
@@ -304,48 +339,54 @@ func modelToBot(model string) string {
 		return "gpt_4_o_mini_chat"
 	case strings.HasPrefix(model, "gpt-4o"):
 		return "gpt_4_o_chat"
-	case strings.HasPrefix(model, "claude"):
+	case strings.HasPrefix(model, "claude-3-5-sonnet"):
 		return "claude_3.5_sonnet"
 	case strings.Contains(model, "haiku"):
 		return "claude_3.5_haiku"
-	case strings.HasPrefix(model, "gemini"):
+	case strings.HasPrefix(model, "gemini-2"):
 		return "gemini_2_0"
+	case strings.HasPrefix(model, "gemini-1"):
+		return "gemini_1_5"
 	case strings.HasPrefix(model, "o1-mini"):
 		return "openai_o_1_mini"
 	case strings.HasPrefix(model, "o1-preview"):
 		return "openai_o_1"
+	case model == "deepseek-reasoner":
+		return "deepseek_reasoner"
+	case model == "deepseek-chat":
+		return "deepseek_chat"
 	default:
 		return "claude_3.5_sonnet"
 	}
 }
 
 // ChatWithImageToMonica 将带图片的聊天请求转换为 MonicaRequest
-func ChatWithImageToMonica(text string, fileInfos []FileInfo, model string) (*MonicaRequest, error) {
-	// 生成会话ID
-	conversationID := fmt.Sprintf("conv:%s", uuid.New().String())
-
-	content := ItemContent{
-		Type:      "file_with_text",
-		Content:   text,
-		FileInfos: fileInfos,
-	}
-
-	item := Item{
-		ConversationID: conversationID,
-		ItemID:         fmt.Sprintf("msg:%s", uuid.New().String()),
-		ItemType:       "question",
-		Data:           content,
-	}
-
-	// 构建请求
-	mReq := &MonicaRequest{
-		TaskUID: fmt.Sprintf("task:%s", uuid.New().String()),
-		BotUID:  modelToBot(model),
-		Data: DataField{
-			ConversationID: conversationID,
-			Items:          []Item{item},
-		},
-	}
-
-	return mReq, nil
-}
+//func ChatWithImageToMonica(text string, fileInfos []FileInfo, model string) (*MonicaRequest, error) {
+//	// 生成会话ID
+//	conversationID := fmt.Sprintf("conv:%s", uuid.New().String())
+//
+//	content := ItemContent{
+//		Type:      "file_with_text",
+//		Content:   text,
+//		FileInfos: fileInfos,
+//	}
+//
+//	item := Item{
+//		ConversationID: conversationID,
+//		ItemID:         fmt.Sprintf("msg:%s", uuid.New().String()),
+//		ItemType:       "question",
+//		Data:           content,
+//	}
+//
+//	// 构建请求
+//	mReq := &MonicaRequest{
+//		TaskUID: fmt.Sprintf("task:%s", uuid.New().String()),
+//		BotUID:  modelToBot(model),
+//		Data: DataField{
+//			ConversationID: conversationID,
+//			Items:          []Item{item},
+//		},
+//	}
+//
+//	return mReq, nil
+//}
