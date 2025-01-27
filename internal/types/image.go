@@ -2,6 +2,8 @@ package types
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"monica-proxy/internal/config"
@@ -90,12 +92,17 @@ func UploadImage(ctx context.Context, filePath string) (*FileInfo, error) {
 
 // UploadBase64Image 上传base64编码的图片到Monica
 func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error) {
-	// 1. 检查缓存
-	if fileInfo, exists := imageCache[base64Data]; exists {
+	// 1. 生成缓存key
+	hasher := md5.New()
+	hasher.Write([]byte(base64Data))
+	cacheKey := hex.EncodeToString(hasher.Sum(nil))
+
+	// 2. 检查缓存
+	if fileInfo, exists := imageCache[cacheKey]; exists {
 		return fileInfo, nil
 	}
 
-	// 2. 解析base64数据
+	// 3. 解析base64数据
 	// 移除 "data:image/png;base64," 这样的前缀
 	parts := strings.Split(base64Data, ",")
 	if len(parts) != 2 {
@@ -114,14 +121,14 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 		return nil, fmt.Errorf("decode base64 failed: %v", err)
 	}
 
-	// 3. 验证图片格式和大小
+	// 4. 验证图片格式和大小
 	fileInfo, err := validateImageBytes(imageData, mimeType)
 	if err != nil {
 		return nil, fmt.Errorf("validate image failed: %v", err)
 	}
 	log.Printf("file info: %+v", fileInfo)
 
-	// 4. 获取预签名URL
+	// 5. 获取预签名URL
 	preSignReq := &PreSignRequest{
 		FilenameList: []string{fileInfo.FileName},
 		Module:       ImageModule,
@@ -146,7 +153,7 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 	}
 	log.Printf("preSign info: %+v", preSignResp)
 
-	// 5. 上传图片数据
+	// 6. 上传图片数据
 	_, err = utils.RestyDefaultClient.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", fileInfo.FileType).
@@ -157,7 +164,7 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 		return nil, fmt.Errorf("upload file failed: %v", err)
 	}
 
-	// 6. 创建文件对象
+	// 7. 创建文件对象
 	fileInfo.ObjectURL = preSignResp.Data.ObjectURLList[0]
 	uploadReq := &FileUploadRequest{
 		Data: []FileInfo{*fileInfo},
@@ -188,7 +195,7 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 	fileInfo.UseFullText = true
 	fileInfo.FileURL = preSignResp.Data.CDNURLList[0]
 
-	// 7. 获取文件llm读取结果知道有返回
+	// 8. 获取文件llm读取结果知道有返回
 	var batchResp FileBatchGetResponse
 	reqMap := make(map[string][]string)
 	reqMap["file_uids"] = []string{fileInfo.FileUID}
@@ -218,8 +225,8 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 	fileInfo.URL = ""
 	fileInfo.ObjectURL = ""
 
-	// 8. 保存到缓存
-	imageCache[base64Data] = fileInfo
+	// 9. 保存到缓存
+	imageCache[cacheKey] = fileInfo
 
 	return fileInfo, nil
 }
