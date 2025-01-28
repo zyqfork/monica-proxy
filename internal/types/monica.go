@@ -359,34 +359,3 @@ func modelToBot(model string) string {
 		return "claude_3.5_sonnet"
 	}
 }
-
-// ChatWithImageToMonica 将带图片的聊天请求转换为 MonicaRequest
-//func ChatWithImageToMonica(text string, fileInfos []FileInfo, model string) (*MonicaRequest, error) {
-//	// 生成会话ID
-//	conversationID := fmt.Sprintf("conv:%s", uuid.New().String())
-//
-//	content := ItemContent{
-//		Type:      "file_with_text",
-//		Content:   text,
-//		FileInfos: fileInfos,
-//	}
-//
-//	item := Item{
-//		ConversationID: conversationID,
-//		ItemID:         fmt.Sprintf("msg:%s", uuid.New().String()),
-//		ItemType:       "question",
-//		Data:           content,
-//	}
-//
-//	// 构建请求
-//	mReq := &MonicaRequest{
-//		TaskUID: fmt.Sprintf("task:%s", uuid.New().String()),
-//		BotUID:  modelToBot(model),
-//		Data: DataField{
-//			ConversationID: conversationID,
-//			Items:          []Item{item},
-//		},
-//	}
-//
-//	return mReq, nil
-//}

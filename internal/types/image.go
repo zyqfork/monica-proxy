@@ -2,8 +2,6 @@ package types
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"monica-proxy/internal/config"
@@ -11,15 +9,37 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/google/uuid"
 )
 
 const MaxFileSize = 10 * 1024 * 1024 // 10MB
 
-// imageCache 用于缓存已上传的图片信息
-var imageCache = make(map[string]*FileInfo)
+var imageCache sync.Map
+
+// sampleAndHash 对base64字符串进行采样并计算xxHash
+func sampleAndHash(data string) string {
+	// 如果数据长度小于1024，直接计算整个字符串的哈希
+	if len(data) <= 1024 {
+		return fmt.Sprintf("%x", xxhash.Sum64String(data))
+	}
+
+	// 采样策略：
+	// 1. 取前256字节
+	// 2. 取中间256字节
+	// 3. 取最后256字节
+	var samples []string
+	samples = append(samples, data[:256])
+	mid := len(data) / 2
+	samples = append(samples, data[mid-128:mid+128])
+	samples = append(samples, data[len(data)-256:])
+
+	// 将采样数据拼接后计算哈希
+	return fmt.Sprintf("%x", xxhash.Sum64String(strings.Join(samples, "")))
+}
 
 // UploadImage 上传图片到Monica
 func UploadImage(ctx context.Context, filePath string) (*FileInfo, error) {
@@ -93,13 +113,11 @@ func UploadImage(ctx context.Context, filePath string) (*FileInfo, error) {
 // UploadBase64Image 上传base64编码的图片到Monica
 func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error) {
 	// 1. 生成缓存key
-	hasher := md5.New()
-	hasher.Write([]byte(base64Data))
-	cacheKey := hex.EncodeToString(hasher.Sum(nil))
+	cacheKey := sampleAndHash(base64Data)
 
 	// 2. 检查缓存
-	if fileInfo, exists := imageCache[cacheKey]; exists {
-		return fileInfo, nil
+	if value, exists := imageCache.Load(cacheKey); exists {
+		return value.(*FileInfo), nil
 	}
 
 	// 3. 解析base64数据
@@ -199,9 +217,9 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 	var batchResp FileBatchGetResponse
 	reqMap := make(map[string][]string)
 	reqMap["file_uids"] = []string{fileInfo.FileUID}
-	var retryCount = 0
+	var retryCount = 1
 	for {
-		if retryCount > 2 {
+		if retryCount > 5 {
 			return nil, fmt.Errorf("retry limit exceeded")
 		}
 		_, err = utils.RestyDefaultClient.R().
@@ -226,7 +244,7 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 	fileInfo.ObjectURL = ""
 
 	// 9. 保存到缓存
-	imageCache[cacheKey] = fileInfo
+	imageCache.Store(cacheKey, fileInfo)
 
 	return fileInfo, nil
 }
