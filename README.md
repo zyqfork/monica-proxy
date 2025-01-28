@@ -66,12 +66,21 @@ Authorization: Bearer YOUR_BEARER_TOKEN
 ```
 
 示例请求：
+
 ```bash
 curl -X POST http://ip:8080/v1/chat/completions \
   -H "Authorization: Bearer YOUR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [{"role": "user", "content": "Hello"}]
+    "model": "gpt-4o",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好"
+      }
+    ],
+    "max_tokens": 4096, 
+    "stream": true
   }'
 ```
 

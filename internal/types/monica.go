@@ -317,7 +317,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 			PreParentItemID: preItemID,
 			TriggerBy:       "auto",
 			IsIncognito:     true,
-			UseModel:        "claude-3", //TODO 好像写啥都没影响
+			UseModel:        "", //TODO 好像写啥都没影响
 			UseNewMemory:    false,
 		},
 		Language: "auto",
