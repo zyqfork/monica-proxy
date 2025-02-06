@@ -1,20 +1,27 @@
+# 使用适合Go应用的基础镜像
 FROM golang:alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
+RUN apk update && apk add --no-cache upx make && rm -rf /var/cache/apk/*
 
-RUN apk add git
+# 设置工作目录
+WORKDIR /app
 
-RUN git clone https://github.com/zyqfork/monica-proxy.git
-WORKDIR monica-proxy
+# 复制所有文件到容器中
+COPY . .
 
-RUN go build -o monica-proxy
+# 下载依赖
+RUN go mod tidy
 
-FROM alpine
-LABEL maintainer="zouyq <zyqcn@live.com>"
+# 构建应用程序
+RUN make build-${TARGETOS}-${TARGETARCH}
 
-COPY --from=builder /go/monica-proxy/monica-proxy /usr/local/bin
+FROM scratch AS final
+WORKDIR /data
+COPY --from=builder /app/build/monica /data/monica
 
-ENTRYPOINT ["monica-proxy"]
+# 开放端口
+EXPOSE 8080
 
-
-
-
-
+# 运行
+CMD ["./monica"]
