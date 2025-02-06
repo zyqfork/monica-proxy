@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -324,11 +323,12 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		TaskType: "chat",
 	}
 
-	indent, err := json.MarshalIndent(mReq, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("send: \n%s\n", indent)
+	//indent, err := json.MarshalIndent(mReq, "", "  ")
+	//if err != nil {
+	//	return nil, err
+	//} else {
+	//	log.Printf("send: \n%s\n", indent)
+	//}
 
 	return mReq, nil
 }

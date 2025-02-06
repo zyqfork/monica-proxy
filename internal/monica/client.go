@@ -9,20 +9,19 @@ import (
 	"monica-proxy/internal/utils"
 )
 
-// SendMonicaRequest 发起对 Monica AI 的请求(使用 resty)
 func SendMonicaRequest(ctx context.Context, mReq *types.MonicaRequest) (*resty.Response, error) {
-	// 发起请求
 	resp, err := utils.RestySSEClient.R().
 		SetContext(ctx).
 		SetHeader("cookie", config.MonicaConfig.MonicaCookie).
+		SetHeader("Accept", "text/event-stream").
+		SetDoNotParseResponse(true). // 不自动解析响应
 		SetBody(mReq).
 		Post(types.BotChatURL)
 
 	if err != nil {
-		log.Printf("monica API error: %v", err)
+		log.Printf("Monica API error: %v", err)
 		return nil, err
 	}
 
-	// 如果需要在这里做更多判断，可自行补充
 	return resp, nil
 }

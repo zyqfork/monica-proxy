@@ -1,8 +1,6 @@
 package apiserver
 
 import (
-	"encoding/json"
-	"log"
 	"monica-proxy/internal/middleware"
 	"monica-proxy/internal/monica"
 	"monica-proxy/internal/types"
@@ -39,11 +37,12 @@ func handleChatCompletion(c echo.Context) error {
 		})
 	}
 
-	marshalIndent, err := json.MarshalIndent(req, "", "  ")
-	if err != nil {
-		return err
-	}
-	log.Printf("Received completion request: \n%s\n", marshalIndent)
+	//marshalIndent, err := json.MarshalIndent(req, "", "  ")
+	//if err != nil {
+	//	return err
+	//} else {
+	//	log.Printf("Received completion request: \n%s\n", marshalIndent)
+	//}
 	// 将 ChatGPTRequest 转换为 MonicaRequest
 	monicaReq, err := types.ChatGPTToMonica(req)
 	if err != nil {
