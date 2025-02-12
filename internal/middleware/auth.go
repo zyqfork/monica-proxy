@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"monica-proxy/internal/config"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ func BearerAuth() echo.MiddlewareFunc {
 
 			// 验证token
 			if token != config.MonicaConfig.BearerToken || token == "" {
+				log.Printf("invalid token: %s", token)
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
 

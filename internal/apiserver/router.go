@@ -68,7 +68,7 @@ func handleChatCompletion(c echo.Context) error {
 	c.Response().WriteHeader(http.StatusOK)
 
 	// 将 Monica 的 SSE 数据逐行读出，再以 SSE 格式返回给调用方
-	if err := monica.StreamMonicaSSEToClient(req.Model, c.Response().Writer, stream.RawBody()); err != nil {
+	if err := monica.StreamMonicaSSEToClient(c.Request().Context(), req.Model, c.Response().Writer, stream.RawBody()); err != nil {
 		return err
 	}
 
