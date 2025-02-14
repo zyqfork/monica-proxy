@@ -75,13 +75,14 @@ type MonicaRequest struct {
 
 // DataField 在 Monica 的 body 中
 type DataField struct {
-	ConversationID  string `json:"conversation_id"`
-	PreParentItemID string `json:"pre_parent_item_id"`
-	Items           []Item `json:"items"`
-	TriggerBy       string `json:"trigger_by"`
-	UseModel        string `json:"use_model,omitempty"`
-	IsIncognito     bool   `json:"is_incognito"`
-	UseNewMemory    bool   `json:"use_new_memory"`
+	ConversationID      string `json:"conversation_id"`
+	PreParentItemID     string `json:"pre_parent_item_id"`
+	Items               []Item `json:"items"`
+	TriggerBy           string `json:"trigger_by"`
+	UseModel            string `json:"use_model,omitempty"`
+	IsIncognito         bool   `json:"is_incognito"`
+	UseNewMemory        bool   `json:"use_new_memory"`
+	UseMemorySuggestion bool   `json:"use_memory_suggestion"`
 }
 
 type Item struct {
@@ -247,9 +248,11 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 	items[0] = defaultItem
 	preItemID := defaultItem.ItemID
 
+	system_prompt := ""
 	for _, msg := range chatReq.Messages {
 		if msg.Role == "system" {
-			// monica不支持设置prompt，所以直接跳过
+			//monica不支持系统提示词，拼接到用户提示词前面，实现系统提示词效果
+			system_prompt = msg.Content + "\n"
 			continue
 		}
 		var msgContext string
@@ -268,6 +271,10 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		itemType := "question"
 		if msg.Role == "assistant" {
 			itemType = "reply"
+		} else {
+			//拼接用户提示词到系统提示词前面
+			msg.Content = system_prompt + msg.Content
+			system_prompt = ""
 		}
 
 		var content ItemContent
@@ -286,13 +293,13 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 				Type:        "file_with_text",
 				Content:     msgContext,
 				FileInfos:   fileIfoList,
-				IsIncognito: true,
+				IsIncognito: false,
 			}
 		} else {
 			content = ItemContent{
 				Type:        "text",
 				Content:     msg.Content,
-				IsIncognito: true,
+				IsIncognito: false,
 			}
 		}
 
@@ -312,13 +319,14 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		TaskUID: fmt.Sprintf("task:%s", uuid.New().String()),
 		BotUID:  modelToBot(chatReq.Model),
 		Data: DataField{
-			ConversationID:  conversationID,
-			Items:           items,
-			PreParentItemID: preItemID,
-			TriggerBy:       "auto",
-			IsIncognito:     true,
-			UseModel:        "", //TODO 好像写啥都没影响
-			UseNewMemory:    false,
+			ConversationID:      conversationID,
+			Items:               items,
+			PreParentItemID:     preItemID,
+			TriggerBy:           "auto",
+			IsIncognito:         false,
+			UseModel:            "", //TODO 好像写啥都没影响
+			UseNewMemory:        true,
+			UseMemorySuggestion: true,
 		},
 		Language: "auto",
 		TaskType: "chat",

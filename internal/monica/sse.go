@@ -8,7 +8,6 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"io"
 	"log"
-	"monica-proxy/internal/types"
 	"monica-proxy/internal/utils"
 	"net/http"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 const (
 	sseObject         = "chat.completion.chunk"
+	completionsObject = "chat.completions"
 	sseFinish         = "[DONE]"
 	initialBufferSize = 4096
 	maxBufferSize     = 1024 * 1024 // 1MB
@@ -71,9 +71,92 @@ func logMetrics(metrics *Metrics) {
 		atomic.LoadInt64(&metrics.CurrentMessages))
 }
 
-func StreamMonicaSSEToClient(ctx context.Context, model string, w io.Writer, r io.Reader) error {
-	log.Printf("=== Starting SSE Stream Processing for model: %s ===", model)
+func ProcessMonicaResponse(ctx context.Context, req openai.ChatCompletionRequest, r io.Reader, fp string) (openai.ChatCompletionResponse, error) {
+	reader := bufio.NewReader(r)
+	var fullContent strings.Builder
+	var thinkContent strings.Builder
+	inThinkBlock := false
 
+	chatId := utils.RandStringUsingMathRand(29)
+	now := time.Now().Unix()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return openai.ChatCompletionResponse{}, ctx.Err()
+		default:
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					// 处理完所有数据
+					return createMessage(chatId, now, req, utils.CalculateUsage(req, fullContent.String()), fullContent.String(), fp), nil
+				}
+				return openai.ChatCompletionResponse{}, fmt.Errorf("读取错误: %w", err)
+			}
+
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			jsonStr := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+			if jsonStr == "" || jsonStr == sseFinish {
+				continue
+			}
+
+			var sseData SSEData
+			if err := sonic.UnmarshalString(jsonStr, &sseData); err != nil {
+				return openai.ChatCompletionResponse{}, fmt.Errorf("解析SSE数据错误: %w", err)
+			}
+
+			// 处理思考块
+			if sseData.AgentStatus.Type == "thinking" {
+				inThinkBlock = true
+				thinkContent.WriteString("<think>\n")
+			} else if sseData.AgentStatus.Type == "thinking_detail_stream" {
+				if inThinkBlock {
+					thinkContent.WriteString(sseData.AgentStatus.Metadata.ReasoningDetail)
+				}
+			} else {
+				// 普通文本内容
+				if inThinkBlock {
+					thinkContent.WriteString("</think>")
+					fullContent.WriteString(thinkContent.String())
+					thinkContent.Reset()
+					inThinkBlock = false
+				}
+				fullContent.WriteString(sseData.Text)
+			}
+
+			if sseData.Finished {
+				return createMessage(chatId, now, req, utils.CalculateUsage(req, fullContent.String()), fullContent.String(), fp), nil
+			}
+		}
+	}
+}
+
+// createFinalResponse 创建最终的完整响应
+func createFinalResponse(chatId string, now int64, req openai.ChatCompletionRequest, content string) openai.ChatCompletionResponse {
+	choice := openai.ChatCompletionChoice{
+		Index: 0,
+		Message: openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleAssistant,
+			Content: content,
+		},
+		FinishReason: openai.FinishReasonStop,
+	}
+
+	return openai.ChatCompletionResponse{
+		ID:      "chatcmpl-" + chatId,
+		Object:  "chat.completion",
+		Created: now,
+		Model:   req.Model,
+		Choices: []openai.ChatCompletionChoice{choice},
+		Usage:   utils.CalculateUsage(req, content),
+	}
+}
+
+func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionRequest, w io.Writer, r io.Reader, fp string) error {
+	log.Printf("=== Starting SSE Stream Processing for model: %s ===", req.Model)
 	metrics := &Metrics{}
 	startTime := time.Now()
 	defer func() {
@@ -87,10 +170,11 @@ func StreamMonicaSSEToClient(ctx context.Context, model string, w io.Writer, r i
 
 	chatId := utils.RandStringUsingMathRand(29)
 	now := time.Now().Unix()
-	fingerprint := utils.RandStringUsingMathRand(10)
+	fingerprint := fp
 
 	log.Printf("Session initialized - ChatID: %s, Fingerprint: %s", chatId, fingerprint)
 
+	var completionBuilder strings.Builder
 	var messageBuffer strings.Builder
 	messageCount := 0
 	var thinkFlag bool
@@ -166,10 +250,12 @@ func StreamMonicaSSEToClient(ctx context.Context, model string, w io.Writer, r i
 			continue
 		}
 
+		//log.Printf("Received SSE data: %+v", sseData)
+
 		messageCount++
 		atomic.AddInt64(&metrics.CurrentMessages, 1)
 
-		if err := retryProcessMessage(ctx, writer, w, sseData, model, chatId, fingerprint, now, &thinkFlag, metrics); err != nil {
+		if err := retryProcessMessage(writer, w, sseData, chatId, fingerprint, now, &thinkFlag, metrics, &completionBuilder, req); err != nil {
 			log.Printf("Failed to process message after %d retries: %v", maxRetries, err)
 			return err
 		}
@@ -191,9 +277,9 @@ func StreamMonicaSSEToClient(ctx context.Context, model string, w io.Writer, r i
 	}
 }
 
-func retryProcessMessage(ctx context.Context, writer *bufio.Writer, w io.Writer, sseData SSEData, model, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics) error {
+func retryProcessMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics, completionBuilder *strings.Builder, req openai.ChatCompletionRequest) error {
 	for retry := 0; retry < maxRetries; retry++ {
-		if err := processMessage(ctx, writer, w, sseData, model, chatId, fingerprint, now, thinkFlag, metrics); err != nil {
+		if err := processMessage(writer, w, sseData, chatId, fingerprint, now, thinkFlag, metrics, completionBuilder, req); err != nil {
 			log.Printf("Retry %d: %v", retry, err)
 			time.Sleep(time.Duration(retry+1) * 100 * time.Millisecond)
 			continue
@@ -203,7 +289,7 @@ func retryProcessMessage(ctx context.Context, writer *bufio.Writer, w io.Writer,
 	return fmt.Errorf("max retries exceeded")
 }
 
-func processMessage(ctx context.Context, writer *bufio.Writer, w io.Writer, sseData SSEData, model, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics) error {
+func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics, completionBuilder *strings.Builder, req openai.ChatCompletionRequest) error {
 	estimatedSize := int64(len(sseData.Text) + 256) // 256 bytes for overhead
 	newSize := atomic.AddInt64(&metrics.BufferUsage, estimatedSize)
 
@@ -213,58 +299,41 @@ func processMessage(ctx context.Context, writer *bufio.Writer, w io.Writer, sseD
 		return fmt.Errorf("message size would exceed buffer limit")
 	}
 
-	var sseMsg types.ChatCompletionStreamResponse
+	var sseMsg openai.ChatCompletionStreamResponse
 
 	if sseData.AgentStatus.Type == "thinking" {
 		*thinkFlag = true
-		sseMsg = createThinkingMessage(chatId, fingerprint, now, model)
+		sseData.Text = "<think>\n"
+		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.Text)
+		completionBuilder.WriteString(sseData.Text)
 	} else if sseData.AgentStatus.Type == "thinking_detail_stream" {
-		sseMsg = createThinkingDetailMessage(chatId, fingerprint, now, model, sseData)
+		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.AgentStatus.Metadata.ReasoningDetail)
+		completionBuilder.WriteString(sseData.Text)
 	} else {
 		if *thinkFlag {
 			sseData.Text = "</think>" + sseData.Text
 			*thinkFlag = false
 		}
-		sseMsg = createNormalMessage(chatId, fingerprint, now, model, sseData)
+		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.Text)
+		completionBuilder.WriteString(sseData.Text)
 	}
 
-	if !sseData.Finished {
-		sseMsg.SystemFingerprint = fingerprint
-	} else {
+	if sseData.Finished {
 		sseMsg.Choices[0].FinishReason = openai.FinishReasonStop
+		usage := utils.CalculateUsage(req, completionBuilder.String())
+		sseMsg.Usage = &usage
 	}
-
 	return sendMessage(writer, w, sseMsg)
 }
 
-func createThinkingMessage(chatId, fingerprint string, now int64, model string) types.ChatCompletionStreamResponse {
-	return types.ChatCompletionStreamResponse{
+func createThinkingDetailMessage(chatId, fingerprint string, now int64, model string, sseData SSEData) openai.ChatCompletionStreamResponse {
+	return openai.ChatCompletionStreamResponse{
 		ID:                "chatcmpl-" + chatId,
 		Object:            sseObject,
 		SystemFingerprint: fingerprint,
 		Created:           now,
 		Model:             model,
-		Choices: []types.ChatCompletionStreamChoice{
-			{
-				Index: 0,
-				Delta: openai.ChatCompletionStreamChoiceDelta{
-					Role:    openai.ChatMessageRoleAssistant,
-					Content: "<think>\n",
-				},
-				FinishReason: openai.FinishReasonNull,
-			},
-		},
-	}
-}
-
-func createThinkingDetailMessage(chatId, fingerprint string, now int64, model string, sseData SSEData) types.ChatCompletionStreamResponse {
-	return types.ChatCompletionStreamResponse{
-		ID:                "chatcmpl-" + chatId,
-		Object:            sseObject,
-		SystemFingerprint: fingerprint,
-		Created:           now,
-		Model:             model,
-		Choices: []types.ChatCompletionStreamChoice{
+		Choices: []openai.ChatCompletionStreamChoice{
 			{
 				Index: 0,
 				Delta: openai.ChatCompletionStreamChoiceDelta{
@@ -277,26 +346,49 @@ func createThinkingDetailMessage(chatId, fingerprint string, now int64, model st
 	}
 }
 
-func createNormalMessage(chatId, fingerprint string, now int64, model string, sseData SSEData) types.ChatCompletionStreamResponse {
-	return types.ChatCompletionStreamResponse{
-		ID:      "chatcmpl-" + chatId,
-		Object:  sseObject,
-		Created: now,
-		Model:   model,
-		Choices: []types.ChatCompletionStreamChoice{
-			{
-				Index: 0,
-				Delta: openai.ChatCompletionStreamChoiceDelta{
-					Role:    openai.ChatMessageRoleAssistant,
-					Content: sseData.Text,
-				},
-				FinishReason: openai.FinishReasonNull,
-			},
+func createStreamMessage(chatId string, now int64, req openai.ChatCompletionRequest, fingerPrint string, conent string) openai.ChatCompletionStreamResponse {
+	choice := openai.ChatCompletionStreamChoice{
+		Index: 0,
+		Delta: openai.ChatCompletionStreamChoiceDelta{
+			Role:    openai.ChatMessageRoleAssistant,
+			Content: conent,
 		},
+		ContentFilterResults: openai.ContentFilterResults{},
+		FinishReason:         openai.FinishReasonNull,
+	}
+
+	return openai.ChatCompletionStreamResponse{
+		ID:                "chatcmpl-" + chatId,
+		Object:            sseObject,
+		Created:           now,
+		Model:             req.Model,
+		Choices:           []openai.ChatCompletionStreamChoice{choice},
+		SystemFingerprint: fingerPrint,
 	}
 }
 
-func sendMessage(writer *bufio.Writer, w io.Writer, sseMsg types.ChatCompletionStreamResponse) error {
+func createMessage(chatId string, now int64, req openai.ChatCompletionRequest, usage openai.Usage, content string, fp string) openai.ChatCompletionResponse {
+	choice := openai.ChatCompletionChoice{
+		Index: 0,
+		Message: openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleAssistant,
+			Content: content,
+		},
+		FinishReason: openai.FinishReasonStop,
+	}
+
+	return openai.ChatCompletionResponse{
+		ID:                "chatcmpl-" + chatId,
+		Object:            completionsObject,
+		Created:           now,
+		Model:             req.Model,
+		Choices:           []openai.ChatCompletionChoice{choice},
+		SystemFingerprint: fp,
+		Usage:             usage,
+	}
+}
+
+func sendMessage(writer *bufio.Writer, w io.Writer, sseMsg openai.ChatCompletionStreamResponse) error {
 	sendLine, err := sonic.MarshalString(sseMsg)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
