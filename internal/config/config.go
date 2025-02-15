@@ -12,6 +12,7 @@ var MonicaConfig *Config
 type Config struct {
 	MonicaCookie string
 	BearerToken  string
+	IsIncognito  bool
 }
 
 // LoadConfig 从环境变量加载配置
@@ -22,6 +23,7 @@ func LoadConfig() *Config {
 	MonicaConfig = &Config{
 		MonicaCookie: os.Getenv("MONICA_COOKIE"),
 		BearerToken:  os.Getenv("BEARER_TOKEN"),
+		IsIncognito:  os.Getenv("IS_INCOGNITO") == "true",
 	}
 	return MonicaConfig
 }

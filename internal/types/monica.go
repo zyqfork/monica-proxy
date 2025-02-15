@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"monica-proxy/internal/config"
 	"strings"
 
 	lop "github.com/samber/lo/parallel"
@@ -293,13 +294,13 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 				Type:        "file_with_text",
 				Content:     msgContext,
 				FileInfos:   fileIfoList,
-				IsIncognito: false,
+				IsIncognito: config.MonicaConfig.IsIncognito,
 			}
 		} else {
 			content = ItemContent{
 				Type:        "text",
 				Content:     msg.Content,
-				IsIncognito: false,
+				IsIncognito: config.MonicaConfig.IsIncognito,
 			}
 		}
 
@@ -323,7 +324,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 			Items:               items,
 			PreParentItemID:     preItemID,
 			TriggerBy:           "auto",
-			IsIncognito:         false,
+			IsIncognito:         config.MonicaConfig.IsIncognito,
 			UseModel:            "", //TODO 好像写啥都没影响
 			UseNewMemory:        true,
 			UseMemorySuggestion: true,

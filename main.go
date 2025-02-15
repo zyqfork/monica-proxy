@@ -18,12 +18,13 @@ func main() {
 	host := flag.String("h", "0.0.0.0", "服务器监听地址")
 	monicaCookie := flag.String("c", "", "Monica Cookie值 (MONICA_COOKIE)")
 	bearerToken := flag.String("k", "", "Bearer Token值 (BEARER_TOKEN)")
+	isIncognito := flag.Bool("i", true, "是否启用隐身模式 (IS_INCOGNITO)")
 
 	flag.Usage = func() {
 		fmt.Printf("用法: %s [选项]\n\n", flag.CommandLine.Name())
 		fmt.Println("选项:")
 		flag.PrintDefaults()
-		fmt.Println("\n示例: ./monica-proxy -p 8080 -c \"cookie\" -k \"token\"")
+		fmt.Println("\n示例: ./monica-proxy -p 8080 -c \"cookie\" -k \"token\" -i=false")
 	}
 
 	// 解析命令行参数
@@ -37,6 +38,8 @@ func main() {
 	if *bearerToken != "" {
 		cfg.BearerToken = *bearerToken
 	}
+	// 设置 IsIncognito 值
+	cfg.IsIncognito = *isIncognito
 
 	// 检查必要的配置
 	if cfg.MonicaCookie == "" {
@@ -55,6 +58,7 @@ func main() {
 	// 启动服务
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	log.Printf("Server starting on %s", addr)
+	log.Printf("Incognito mode: %v", cfg.IsIncognito)
 	if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("start server error: %v", err)
 	}
