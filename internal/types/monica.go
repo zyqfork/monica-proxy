@@ -326,8 +326,8 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 			TriggerBy:           "auto",
 			IsIncognito:         config.MonicaConfig.IsIncognito,
 			UseModel:            "", //TODO 好像写啥都没影响
-			UseNewMemory:        true,
-			UseMemorySuggestion: true,
+			UseNewMemory:        false,
+			UseMemorySuggestion: false,
 		},
 		Language: "auto",
 		TaskType: "chat",
