@@ -24,9 +24,16 @@ func RegisterRoutes(e *echo.Echo) {
 
 func handleChatCompletion(c echo.Context) error {
 	var req openai.ChatCompletionRequest
+
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"error": "Invalid request payload",
+		})
+	}
+
+	if !types.IsModelSupported(req.Model) {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error": "Model not supported",
 		})
 	}
 

@@ -213,6 +213,7 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 			return fmt.Errorf("read error: %w", err)
 		}
 
+		//log.Printf(line)
 		lineSize := int64(len(line))
 		newBufferSize := atomic.AddInt64(&totalBufferSize, lineSize)
 
@@ -326,26 +327,6 @@ func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, 
 	return sendMessage(writer, w, sseMsg)
 }
 
-func createThinkingDetailMessage(chatId, fingerprint string, now int64, model string, sseData SSEData) openai.ChatCompletionStreamResponse {
-	return openai.ChatCompletionStreamResponse{
-		ID:                "chatcmpl-" + chatId,
-		Object:            sseObject,
-		SystemFingerprint: fingerprint,
-		Created:           now,
-		Model:             model,
-		Choices: []openai.ChatCompletionStreamChoice{
-			{
-				Index: 0,
-				Delta: openai.ChatCompletionStreamChoiceDelta{
-					Role:    openai.ChatMessageRoleAssistant,
-					Content: sseData.AgentStatus.Metadata.ReasoningDetail,
-				},
-				FinishReason: openai.FinishReasonNull,
-			},
-		},
-	}
-}
-
 func createStreamMessage(chatId string, now int64, req openai.ChatCompletionRequest, fingerPrint string, conent string) openai.ChatCompletionStreamResponse {
 	choice := openai.ChatCompletionStreamChoice{
 		Index: 0,
@@ -368,6 +349,27 @@ func createStreamMessage(chatId string, now int64, req openai.ChatCompletionRequ
 }
 
 func createMessage(chatId string, now int64, req openai.ChatCompletionRequest, usage openai.Usage, content string, fp string) openai.ChatCompletionResponse {
+	choice := openai.ChatCompletionChoice{
+		Index: 0,
+		Message: openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleAssistant,
+			Content: content,
+		},
+		FinishReason: openai.FinishReasonStop,
+	}
+
+	return openai.ChatCompletionResponse{
+		ID:                "chatcmpl-" + chatId,
+		Object:            completionsObject,
+		Created:           now,
+		Model:             req.Model,
+		Choices:           []openai.ChatCompletionChoice{choice},
+		SystemFingerprint: fp,
+		Usage:             usage,
+	}
+}
+
+func createThinkMessage(chatId string, now int64, req openai.ChatCompletionRequest, usage openai.Usage, content string, fp string) openai.ChatCompletionResponse {
 	choice := openai.ChatCompletionChoice{
 		Index: 0,
 		Message: openai.ChatCompletionMessage{

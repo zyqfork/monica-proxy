@@ -3,11 +3,9 @@ package types
 import (
 	"context"
 	"fmt"
+	lop "github.com/samber/lo/parallel"
 	"log"
 	"monica-proxy/internal/config"
-	"strings"
-
-	lop "github.com/samber/lo/parallel"
 
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
@@ -77,8 +75,11 @@ type MonicaRequest struct {
 // DataField 在 Monica 的 body 中
 type DataField struct {
 	ConversationID      string `json:"conversation_id"`
-	PreParentItemID     string `json:"pre_parent_item_id"`
 	Items               []Item `json:"items"`
+	PreGeneratedReplyId string `json:"pre_generated_reply_id"`
+	PreParentItemID     string `json:"pre_parent_item_id"`
+	Origin              string `json:"origin"`
+	OriginPageTitle     string `json:"origin_page_title"`
 	TriggerBy           string `json:"trigger_by"`
 	UseModel            string `json:"use_model,omitempty"`
 	IsIncognito         bool   `json:"is_incognito"`
@@ -194,9 +195,12 @@ type FileBatchGetResponse struct {
 
 // OpenAIModel represents a model in the OpenAI API format
 type OpenAIModel struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	OwnedBy string `json:"owned_by"`
+	ID              string `json:"id"`
+	Object          string `json:"object"`
+	BotUid          string `json:"-"`
+	Origin          string `json:"-"`
+	OriginPageTitle string `json:"-"`
+	OwnedBy         string `json:"owned_by"`
 }
 
 // OpenAIModelList represents the response format for the /v1/models endpoint
@@ -205,25 +209,40 @@ type OpenAIModelList struct {
 	Data   []OpenAIModel `json:"data"`
 }
 
-// GetSupportedModels returns all supported models in OpenAI format
+var modelMap = map[string]OpenAIModel{
+	"gpt-4o":                     {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_o_mini_chat", Origin: "https://monica.im/home/chat/gpt-4o/gpt_4_o_chat", OriginPageTitle: "GPT-4o - Monica 智能体"},
+	"openai-o1":                  {Object: "model", OwnedBy: "monica", BotUid: "openai_o1", Origin: "https://monica.im/home/chat/o1/openai_o1", OriginPageTitle: "o1 - Monica 智能体"},
+	"openai-o-3-mini":            {Object: "model", OwnedBy: "monica", BotUid: "openai_o_3_mini", Origin: "https://monica.im/home/chat/o3-mini/openai_o_3_mini", OriginPageTitle: "o3-mini - Monica 智能体"},
+	"gpt-4o-mini":                {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_o_mini_chat", Origin: "https://monica.im/home/chat/gpt-4o-mini/gpt_4_o_mini_chat", OriginPageTitle: "GPT-4o mini - Monica 智能体"},
+	"claude-3.7-sonnet":          {Object: "model", OwnedBy: "monica", BotUid: "claude_3_7_sonnet", Origin: "https://monica.im/home/chat/Claude%203.7%20Sonnet/claude_3_7_sonnet", OriginPageTitle: "Claude 3.7 Sonnet - Monica 智能体"},
+	"claude-3.7-sonnet-thinking": {Object: "model", OwnedBy: "monica", BotUid: "claude_3_7_sonnet_think", Origin: "https://monica.im/home/chat/Claude%203.7%20Sonnet%20Thinking/claude_3_7_sonnet_think", OriginPageTitle: "Claude 3.7 Sonnet Thinking - Monica 智能体"},
+	"claude-3.5-haiku":           {Object: "model", OwnedBy: "monica", BotUid: "claude_3.5_haiku", Origin: "https://monica.im/home/chat/Claude%203.5%20Haiku/claude_3.5_haiku", OriginPageTitle: "Claude 3.5 Haiku - Monica 智能体"},
+	"deepclaude":                 {Object: "model", OwnedBy: "monica", BotUid: "deepclaude", Origin: "https://monica.im/home/chat/DeepClaude/deepclaude", OriginPageTitle: "DeepClaude - Monica 智能体"},
+	"gemini-2.0-pro":             {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_0_pro", Origin: "https://monica.im/home/chat/Gemini%202.0%20Pro/gemini_2_0_pro", OriginPageTitle: "Gemini 2.0 Pro - Monica 智能体"},
+	"gemini-2.0":                 {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_0", Origin: "https://monica.im/home/chat/Gemini%202.0%20Flash/gemini_2_0", OriginPageTitle: "Gemini 2.0 Flash - Monica 智能体"},
+	"gemini-2.0-flash-think":     {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_0_flash_think", Origin: "https://monica.im/home/chat/Gemini%202.0%20Flash%20Thinking/gemini_2_0_flash_think", OriginPageTitle: "Gemini 2.0 Flash Thinking - Monica 智能体"},
+	"deepseek-chat":              {Object: "model", OwnedBy: "monica", BotUid: "deepseek_chat", Origin: "https://monica.im/home/chat/DeepSeek%20V3/deepseek_chat", OriginPageTitle: "DeepSeek V3 - Monica 智能体"},
+	"deepseek-reasoner":          {Object: "model", OwnedBy: "monica", BotUid: "deepseek_reasoner", Origin: "https://monica.im/home/chat/DeepSeek%20R1/deepseek_reasoner", OriginPageTitle: "DeepSeek R1 - Monica 智能体"},
+	"llama-3.3-70b":              {Object: "model", OwnedBy: "monica", BotUid: "llama_3_3_70b", Origin: "https://monica.im/home/chat/Llama%203.3%2070B/llama_3_3_70b", OriginPageTitle: "Llama 3.3 70B - Monica 智能体"},
+	"llama-3.1-405b":             {Object: "model", OwnedBy: "monica", BotUid: "llama_3_1_405b", Origin: "https://monica.im/home/chat/Llama%203.1%20405B/llama_3_1_405b", OriginPageTitle: "Llama 3.1 405B - Monica 智能体"},
+}
+
+func IsModelSupported(modelName string) bool {
+	_, exists := modelMap[modelName]
+	return exists
+}
+
 func GetSupportedModels() OpenAIModelList {
-	models := []OpenAIModel{
-		{ID: "gpt-4o-mini", Object: "model", OwnedBy: "monica"},
-		{ID: "gpt-4o", Object: "model", OwnedBy: "monica"},
-		{ID: "claude-3-5-sonnet", Object: "model", OwnedBy: "monica"},
-		{ID: "claude-3-5-haiku", Object: "model", OwnedBy: "monica"},
-		{ID: "gemini-2.0-pro", Object: "model", OwnedBy: "monica"},
-		{ID: "gemini-2.0-flash", Object: "model", OwnedBy: "monica"},
-		{ID: "gemini-1.5-pro", Object: "model", OwnedBy: "monica"},
-		{ID: "o3-mini", Object: "model", OwnedBy: "monica"},
-		{ID: "o1-preview", Object: "model", OwnedBy: "monica"},
-		{ID: "deepseek-reasoner", Object: "model", OwnedBy: "monica"},
-		{ID: "deepseek-chat", Object: "model", OwnedBy: "monica"},
+	var modelSlice []OpenAIModel
+	for id, model := range modelMap {
+		modelWithID := model
+		modelWithID.ID = id
+		modelSlice = append(modelSlice, modelWithID)
 	}
 
 	return OpenAIModelList{
 		Object: "list",
-		Data:   models,
+		Data:   modelSlice,
 	}
 }
 
@@ -248,6 +267,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 	var items = make([]Item, 1, len(chatReq.Messages))
 	items[0] = defaultItem
 	preItemID := defaultItem.ItemID
+	preReplyID := fmt.Sprintf("msg:%s", uuid.New().String())
 
 	system_prompt := ""
 	for _, msg := range chatReq.Messages {
@@ -318,14 +338,17 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 	// 构建请求
 	mReq := &MonicaRequest{
 		TaskUID: fmt.Sprintf("task:%s", uuid.New().String()),
-		BotUID:  modelToBot(chatReq.Model),
+		BotUID:  modelMap[chatReq.Model].BotUid,
 		Data: DataField{
 			ConversationID:      conversationID,
 			Items:               items,
+			PreGeneratedReplyId: preReplyID,
 			PreParentItemID:     preItemID,
+			Origin:              modelMap[chatReq.Model].Origin,
+			OriginPageTitle:     modelMap[chatReq.Model].OriginPageTitle,
 			TriggerBy:           "auto",
 			IsIncognito:         config.MonicaConfig.IsIncognito,
-			UseModel:            "", //TODO 好像写啥都没影响
+			UseModel:            chatReq.Model,
 			UseNewMemory:        false,
 			UseMemorySuggestion: false,
 		},
@@ -341,31 +364,4 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 	//}
 
 	return mReq, nil
-}
-
-func modelToBot(model string) string {
-	switch {
-	case strings.HasPrefix(model, "gpt-4o-mini"):
-		return "gpt_4_o_mini_chat"
-	case strings.HasPrefix(model, "gpt-4o"):
-		return "gpt_4_o_chat"
-	case strings.HasPrefix(model, "claude-3-5-sonnet"):
-		return "claude_3.5_sonnet"
-	case strings.Contains(model, "haiku"):
-		return "claude_3.5_haiku"
-	case strings.HasPrefix(model, "gemini-2"):
-		return "gemini_2_0"
-	case strings.HasPrefix(model, "gemini-1"):
-		return "gemini_1_5"
-	case strings.HasPrefix(model, "o1-mini"):
-		return "openai_o_1_mini"
-	case strings.HasPrefix(model, "o1-preview"):
-		return "openai_o_1"
-	case model == "deepseek-reasoner":
-		return "deepseek_reasoner"
-	case model == "deepseek-chat":
-		return "deepseek_chat"
-	default:
-		return "claude_3.5_sonnet"
-	}
 }

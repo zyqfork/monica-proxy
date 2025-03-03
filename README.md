@@ -8,6 +8,8 @@
 - 兼容 ChatGPT API 格式
 - 使用 Docker 进行简单部署
 - Bearer Token 认证保护
+- 支持token计数
+- 支持流式和非流失响应
 
 ## 快速开始
 
