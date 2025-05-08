@@ -9,7 +9,7 @@
 - 使用 Docker 进行简单部署
 - Bearer Token 认证保护
 - 支持token计数
-- 支持流式和非流失响应
+- 支持流式和非流式响应
 
 ## 快速开始
 
@@ -40,9 +40,30 @@ docker run --pull=always -d \
          - BEARER_TOKEN="YOUR_BEARER_TOKEN"
    ```
 
-   环境变量说明：
-    - `MONICA_COOKIE`: Monica 的 Cookie `(格式：session_id=eyJ...)`，用于访问 Monica 的 API
-    - `BEARER_TOKEN`: API 访问令牌，用于保护 API 接口安全
+### 命令行参数
+| 参数 | 简写 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--p` | `-p` | `8080` | 服务器监听端口 |
+| `--h` | `-h` | `0.0.0.0` | 服务器监听地址 |
+| `--c` | `-c` | `""` | Monica Cookie值 (MONICA_COOKIE) |
+| `--k` | `-k` | `""` | Bearer Token值 (BEARER_TOKEN) |
+| `--i` | `-i` | `true` | 是否启用隐身模式 (IS_INCOGNITO) |
+
+### 启动示例
+
+```bash
+# 使用默认配置启动服务
+./monica-proxy
+
+# 指定端口和地址
+./monica-proxy -p 9000 -h 127.0.0.1
+
+# 设置认证信息并关闭隐身模式
+./monica-proxy -c "your-monica-cookie" -k "your-bearer-token" -i=false
+```
+或者使用环境变量：
+- `MONICA_COOKIE`: Monica 的 Cookie `(格式：session_id=eyJ...)`，用于访问 Monica 的 API
+- `BEARER_TOKEN`: API 访问令牌，用于保护 API 接口安全
 
 2. 启动服务
    ```bash
@@ -70,6 +91,11 @@ Authorization: Bearer YOUR_BEARER_TOKEN
 示例请求：
 
 ```bash
+# 获取支持的模型列表
+curl --location 'http://ip:8080/v1/models' \
+--header 'Authorization: Bearer YOUR_BEARER_TOKEN'
+
+# openai 请求
 curl -X POST http://ip:8080/v1/chat/completions \
   -H "Authorization: Bearer YOUR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
@@ -81,10 +107,27 @@ curl -X POST http://ip:8080/v1/chat/completions \
         "content": "你好"
       }
     ],
-    "max_tokens": 4096, 
     "stream": true
   }'
 ```
+# 支持的Monica模型列表
+| id                         | object |  owned_by  |
+|----------------------------|--------|-------|
+| gpt-4o                     | model  | Monica |
+| gpt-4o-mini                | model  | Monica |
+| openai-o1                  | model  | Monica |
+| openai-o-3-mini            | model  | Monica |
+| claude-3.7-sonnet          | model  | Monica |
+| claude-3.7-sonnet-thinking | model  | Monica |
+| claude-3.5-haiku           | model  | Monica |
+| gemini-2.0                 | model  | Monica |
+| gemini-2.0-flash-think     | model  | Monica |
+| gemini-2.0-pro             | model  | Monica |
+| deepseek-reasoner          | model  | Monica |
+| deepseek-chat              | model  | Monica |
+| llama-3.3-70b              | model  | Monica |
+| llama-3.1-405b             | model  | Monica |
+| deepclaude                 | model  | Monica |
 
 ## 注意事项
 
