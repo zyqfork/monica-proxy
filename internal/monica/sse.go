@@ -230,7 +230,7 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 			continue
 		}
 
-		log.Printf("Received SSE data: %+v", sseData)
+		//log.Printf("Received SSE data: %+v", sseData)
 
 		messageCount++
 		atomic.AddInt64(&metrics.CurrentMessages, 1)
