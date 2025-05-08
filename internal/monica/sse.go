@@ -134,27 +134,6 @@ func ProcessMonicaResponse(ctx context.Context, req openai.ChatCompletionRequest
 	}
 }
 
-// createFinalResponse 创建最终的完整响应
-func createFinalResponse(chatId string, now int64, req openai.ChatCompletionRequest, content string) openai.ChatCompletionResponse {
-	choice := openai.ChatCompletionChoice{
-		Index: 0,
-		Message: openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: content,
-		},
-		FinishReason: openai.FinishReasonStop,
-	}
-
-	return openai.ChatCompletionResponse{
-		ID:      "chatcmpl-" + chatId,
-		Object:  "chat.completion",
-		Created: now,
-		Model:   req.Model,
-		Choices: []openai.ChatCompletionChoice{choice},
-		Usage:   utils.CalculateUsage(req, content),
-	}
-}
-
 func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionRequest, w io.Writer, r io.Reader, fp string) error {
 	log.Printf("=== Starting SSE Stream Processing for model: %s ===", req.Model)
 	metrics := &Metrics{}
@@ -251,7 +230,7 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 			continue
 		}
 
-		//log.Printf("Received SSE data: %+v", sseData)
+		log.Printf("Received SSE data: %+v", sseData)
 
 		messageCount++
 		atomic.AddInt64(&metrics.CurrentMessages, 1)
@@ -302,20 +281,11 @@ func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, 
 
 	var sseMsg openai.ChatCompletionStreamResponse
 
-	if sseData.AgentStatus.Type == "thinking" {
-		*thinkFlag = true
-		sseData.Text = "<think>\n"
-		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.Text)
-		completionBuilder.WriteString(sseData.Text)
-	} else if sseData.AgentStatus.Type == "thinking_detail_stream" {
-		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.AgentStatus.Metadata.ReasoningDetail)
+	if sseData.AgentStatus.Type == "thinking_detail_stream" {
+		sseMsg = createStreamMessage(chatId, now, req, fingerprint, "", sseData.AgentStatus.Metadata.ReasoningDetail)
 		completionBuilder.WriteString(sseData.Text)
 	} else {
-		if *thinkFlag {
-			sseData.Text = "</think>" + sseData.Text
-			*thinkFlag = false
-		}
-		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.Text)
+		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.Text, "")
 		completionBuilder.WriteString(sseData.Text)
 	}
 
@@ -327,12 +297,13 @@ func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, 
 	return sendMessage(writer, w, sseMsg)
 }
 
-func createStreamMessage(chatId string, now int64, req openai.ChatCompletionRequest, fingerPrint string, conent string) openai.ChatCompletionStreamResponse {
+func createStreamMessage(chatId string, now int64, req openai.ChatCompletionRequest, fingerPrint string, conent string, reasoningContent string) openai.ChatCompletionStreamResponse {
 	choice := openai.ChatCompletionStreamChoice{
 		Index: 0,
 		Delta: openai.ChatCompletionStreamChoiceDelta{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: conent,
+			Role:             openai.ChatMessageRoleAssistant,
+			Content:          conent,
+			ReasoningContent: reasoningContent,
 		},
 		ContentFilterResults: openai.ContentFilterResults{},
 		FinishReason:         openai.FinishReasonNull,
