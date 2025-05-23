@@ -117,9 +117,12 @@ curl -X POST http://ip:8080/v1/chat/completions \
 | gpt-4o-mini                | model  | Monica |
 | openai-o1                  | model  | Monica |
 | openai-o-3-mini            | model  | Monica |
+| claude-3.5-haiku           | model  | Monica |
+| claude-3.5-sonnet           | model  | Monica |
 | claude-3.7-sonnet          | model  | Monica |
 | claude-3.7-sonnet-thinking | model  | Monica |
-| claude-3.5-haiku           | model  | Monica |
+| claude-4-sonnet            | model  | Monica |
+| claude-4-opus              | model  | Monica |
 | gemini-2.0                 | model  | Monica |
 | gemini-2.0-flash-think     | model  | Monica |
 | gemini-2.0-pro             | model  | Monica |
