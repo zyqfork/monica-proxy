@@ -3,9 +3,10 @@ package types
 import (
 	"context"
 	"fmt"
-	lop "github.com/samber/lo/parallel"
 	"log"
 	"monica-proxy/internal/config"
+
+	lop "github.com/samber/lo/parallel"
 
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
@@ -210,6 +211,7 @@ type OpenAIModelList struct {
 }
 
 var modelMap = map[string]OpenAIModel{
+	"gpt-5":                      {Object: "model", OwnedBy: "monica", BotUid: "gpt_5", Origin: "https://monica.im/home/chat/GPT-5/gpt_5", OriginPageTitle: "GPT-5 - Monica 智能体"},
 	"gpt-4o":                     {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_o_mini_chat", Origin: "https://monica.im/home/chat/gpt-4o/gpt_4_o_chat", OriginPageTitle: "GPT-4o - Monica 智能体"},
 	"gpt-4.1":                    {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_1", Origin: "https://monica.im/home/chat/GPT-4.1/gpt_4_1", OriginPageTitle: "GPT-4.1 - Monica 智能体"},
 	"gpt-4.5-preview":            {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_5_chat", Origin: "https://monica.im/home/chat/GPT-4.5/gpt_4_5_chat", OriginPageTitle: "GPT-4.5 - Monica 智能体"},
@@ -223,6 +225,7 @@ var modelMap = map[string]OpenAIModel{
 	"claude-3.7-sonnet-thinking": {Object: "model", OwnedBy: "monica", BotUid: "claude_3_7_sonnet_think", Origin: "https://monica.im/home/chat/Claude%203.7%20Sonnet%20Thinking/claude_3_7_sonnet_think", OriginPageTitle: "Claude 3.7 Sonnet Thinking - Monica 智能体"},
 	"claude-4-sonnet":            {Object: "model", OwnedBy: "monica", BotUid: "claude_4_sonnet", Origin: "https://monica.im/home/chat/claude-4-sonnet/claude_4_sonnet", OriginPageTitle: "Claude 4 Sonnet - Monica 智能体"},
 	"claude-4-opus":              {Object: "model", OwnedBy: "monica", BotUid: "claude_4_opus", Origin: "https://monica.im/home/chat/Claude%204%20Opus/claude_4_opus", OriginPageTitle: "Claude 4 Opus - Monica 智能体"},
+	"claude-sonnet-4-5":          {Object: "model", OwnedBy: "monica", BotUid: "claude_4_5_sonnet", Origin: "https://monica.im/home/chat/Claude%204.5%20Sonnet/claude_4_5_sonnet", OriginPageTitle: "Claude 4.5 Sonnet - Monica 智能体"},
 	"deepclaude":                 {Object: "model", OwnedBy: "monica", BotUid: "deepclaude", Origin: "https://monica.im/home/chat/DeepClaude/deepclaude", OriginPageTitle: "DeepClaude - Monica 智能体"},
 	"gemini-2.5-pro":             {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_5_pro", Origin: "https://monica.im/home/chat/Gemini%202.5%20Pro/gemini_2_5_pro", OriginPageTitle: "Gemini 2.5 Pro - Monica 智能体"},
 	"gemini-2.5-flash":           {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_5_flash", Origin: "https://monica.im/home/chat/Gemini%202.5%20Flash/gemini_2_5_flash", OriginPageTitle: "Gemini 2.5 Flash - Monica 智能体"},
