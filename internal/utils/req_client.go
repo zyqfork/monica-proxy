@@ -9,11 +9,12 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-// newOptimizedTransport 创建优化的 HTTP 传输配置，提升连接池复用率
+// newOptimizedTransport 创建 HTTP 传输配置：适度复用连接，控制内存占用
+// Go 默认 MaxIdleConnsPerHost=2；过大（如 100）会保留大量空闲连接，每连接约数十 KB，导致内存明显上升
 func newOptimizedTransport() *http.Transport {
 	return &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 2, // 单主机 10 条空闲连接足够复用，避免占用过多内存
 		IdleConnTimeout:     90 * time.Second,
 		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	}

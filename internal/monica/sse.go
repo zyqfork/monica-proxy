@@ -22,7 +22,7 @@ const (
 	sseObject         = "chat.completion.chunk"
 	completionsObject = "chat.completions"
 	sseFinish         = "[DONE]"
-	initialBufferSize = 8192 // 8KB，减少小块 read/write 的系统调用次数
+	initialBufferSize = 4096 // 4KB，与 Go 默认一致，避免每流占用过多内存
 	maxBufferSize     = 1024 * 1024 // 1MB
 	flushThreshold    = 10
 	flushBatchSize    = 2 // 每 N 条消息 flush 一次，平衡延迟与系统调用
