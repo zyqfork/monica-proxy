@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"monica-proxy/internal/config"
+	"sync"
 
 	lop "github.com/samber/lo/parallel"
 
@@ -240,18 +241,25 @@ func IsModelSupported(modelName string) bool {
 	return exists
 }
 
-func GetSupportedModels() OpenAIModelList {
-	var modelSlice []OpenAIModel
-	for id, model := range modelMap {
-		modelWithID := model
-		modelWithID.ID = id
-		modelSlice = append(modelSlice, modelWithID)
-	}
+var (
+	cachedModels     OpenAIModelList
+	cachedModelsOnce sync.Once
+)
 
-	return OpenAIModelList{
-		Object: "list",
-		Data:   modelSlice,
-	}
+func GetSupportedModels() OpenAIModelList {
+	cachedModelsOnce.Do(func() {
+		modelSlice := make([]OpenAIModel, 0, len(modelMap))
+		for id, model := range modelMap {
+			modelWithID := model
+			modelWithID.ID = id
+			modelSlice = append(modelSlice, modelWithID)
+		}
+		cachedModels = OpenAIModelList{
+			Object: "list",
+			Data:   modelSlice,
+		}
+	})
+	return cachedModels
 }
 
 // ChatGPTToMonica 将 ChatGPTRequest 转换为 MonicaRequest

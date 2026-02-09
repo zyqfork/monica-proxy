@@ -1,21 +1,17 @@
 package utils
 
 import (
-	"math/rand"
-	"time"
+	"math/rand/v2"
 )
 
-var randSource = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 // RandStringUsingMathRand 生成指定长度的随机字符串
+// 使用 math/rand/v2 减少锁竞争，提升高并发下的性能
 func RandStringUsingMathRand(n int) string {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-	// 创建一个长度为 n 的切片，用来存放随机字符
-	result := make([]rune, n)
-	for i := 0; i < n; i++ {
-		result[i] = letters[randSource.Intn(len(letters))]
+	result := make([]byte, n)
+	for i := range result {
+		result[i] = letters[rand.IntN(len(letters))]
 	}
-
 	return string(result)
 }

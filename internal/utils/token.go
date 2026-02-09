@@ -1,20 +1,33 @@
 package utils
 
 import (
-	"fmt"
+	"sync"
+
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/sashabaranov/go-openai"
 )
 
+var (
+	tiktokenOnce sync.Once
+	cachedTke    *tiktoken.Tiktoken
+	tiktokenErr  error
+)
+
+func getTiktokenEncoding() (*tiktoken.Tiktoken, error) {
+	tiktokenOnce.Do(func() {
+		tke, err := tiktoken.GetEncoding("cl100k_base")
+		cachedTke, tiktokenErr = tke, err
+	})
+	return cachedTke, tiktokenErr
+}
+
 func CalculateTokens(text string) int {
-	encoding := "cl100k_base"
-	tke, err := tiktoken.GetEncoding(encoding)
+	tke, err := getTiktokenEncoding()
 	if err != nil {
-		err = fmt.Errorf("getEncoding: %v", err)
 		return 0
 	}
-	token := tke.Encode(text, nil, nil)
-	return len(token)
+	tokens := tke.Encode(text, nil, nil)
+	return len(tokens)
 }
 
 // 简单计算message里面的token数量

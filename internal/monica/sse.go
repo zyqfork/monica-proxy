@@ -4,24 +4,28 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/bytedance/sonic"
-	"github.com/sashabaranov/go-openai"
 	"io"
 	"log"
-	"monica-proxy/internal/utils"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/bytedance/sonic"
+	"github.com/sashabaranov/go-openai"
+
+	"monica-proxy/internal/config"
+	"monica-proxy/internal/utils"
 )
 
 const (
 	sseObject         = "chat.completion.chunk"
 	completionsObject = "chat.completions"
 	sseFinish         = "[DONE]"
-	initialBufferSize = 4096
+	initialBufferSize = 8192 // 8KB，减少小块 read/write 的系统调用次数
 	maxBufferSize     = 1024 * 1024 // 1MB
 	flushThreshold    = 10
+	flushBatchSize    = 2 // 每 N 条消息 flush 一次，平衡延迟与系统调用
 	heartbeatInterval = 30 * time.Second
 	maxRetries        = 3
 )
@@ -62,6 +66,9 @@ func (m *Metrics) updateBufferUsage(size int64) {
 }
 
 func logMetrics(metrics *Metrics) {
+	if config.MonicaConfig != nil && !config.MonicaConfig.Debug {
+		return
+	}
 	log.Printf("Metrics - Buffer Usage: %d/%d bytes (%.2f%%), Total Processed: %d, Errors: %d, Messages: %d",
 		atomic.LoadInt64(&metrics.BufferUsage),
 		maxBufferSize,
@@ -159,13 +166,17 @@ func ProcessMonicaResponse(ctx context.Context, req openai.ChatCompletionRequest
 }
 
 func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionRequest, w io.Writer, r io.Reader, fp string) error {
-	log.Printf("=== Starting SSE Stream Processing for model: %s ===", req.Model)
+	if config.MonicaConfig != nil && config.MonicaConfig.Debug {
+		log.Printf("=== Starting SSE Stream Processing for model: %s ===", req.Model)
+	}
 	metrics := &Metrics{}
 	startTime := time.Now()
 	defer func() {
 		metrics.ProcessingTime = time.Since(startTime)
-		logMetrics(metrics)
-		log.Printf("Stream processing completed. Total time: %v", metrics.ProcessingTime)
+		if config.MonicaConfig != nil && config.MonicaConfig.Debug {
+			logMetrics(metrics)
+			log.Printf("Stream processing completed. Total time: %v", metrics.ProcessingTime)
+		}
 	}()
 
 	reader := bufio.NewReaderSize(r, initialBufferSize)
@@ -175,7 +186,9 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 	now := time.Now().Unix()
 	fingerprint := fp
 
-	log.Printf("Session initialized - ChatID: %s, Fingerprint: %s", chatId, fingerprint)
+	if config.MonicaConfig != nil && config.MonicaConfig.Debug {
+		log.Printf("Session initialized - ChatID: %s, Fingerprint: %s", chatId, fingerprint)
+	}
 
 	var completionBuilder strings.Builder
 	var messageBuffer strings.Builder
@@ -222,7 +235,9 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 			}
 			continue
 		case <-metricsLogger.C:
-			logMetrics(metrics)
+			if config.MonicaConfig != nil && config.MonicaConfig.Debug {
+				logMetrics(metrics)
+			}
 			continue
 		case result, ok := <-lineChan:
 			if !ok {
@@ -281,7 +296,9 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 			messageCount++
 			atomic.AddInt64(&metrics.CurrentMessages, 1)
 
-			if err := retryProcessMessage(writer, w, sseData, chatId, fingerprint, now, &thinkFlag, metrics, &completionBuilder, req); err != nil {
+				// 每 flushBatchSize 条消息或 Finished 时 flush，减少系统调用
+			doFlush := messageCount%flushBatchSize == 0 || sseData.Finished
+			if err := retryProcessMessage(writer, w, sseData, chatId, fingerprint, now, &thinkFlag, metrics, &completionBuilder, req, doFlush); err != nil {
 				log.Printf("Failed to process message after %d retries: %v", maxRetries, err)
 				return err
 			}
@@ -304,9 +321,9 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 	}
 }
 
-func retryProcessMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics, completionBuilder *strings.Builder, req openai.ChatCompletionRequest) error {
+func retryProcessMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics, completionBuilder *strings.Builder, req openai.ChatCompletionRequest, doFlush bool) error {
 	for retry := 0; retry < maxRetries; retry++ {
-		if err := processMessage(writer, w, sseData, chatId, fingerprint, now, thinkFlag, metrics, completionBuilder, req); err != nil {
+		if err := processMessage(writer, w, sseData, chatId, fingerprint, now, thinkFlag, metrics, completionBuilder, req, doFlush); err != nil {
 			log.Printf("Retry %d: %v", retry, err)
 			time.Sleep(time.Duration(retry+1) * 100 * time.Millisecond)
 			continue
@@ -316,7 +333,7 @@ func retryProcessMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, cha
 	return fmt.Errorf("max retries exceeded")
 }
 
-func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics, completionBuilder *strings.Builder, req openai.ChatCompletionRequest) error {
+func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, fingerprint string, now int64, thinkFlag *bool, metrics *Metrics, completionBuilder *strings.Builder, req openai.ChatCompletionRequest, doFlush bool) error {
 	estimatedSize := int64(len(sseData.Text) + 256) // 256 bytes for overhead
 	newSize := atomic.AddInt64(&metrics.BufferUsage, estimatedSize)
 
@@ -341,7 +358,7 @@ func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, 
 		usage := utils.CalculateUsage(req, completionBuilder.String())
 		sseMsg.Usage = &usage
 	}
-	return sendMessage(writer, w, sseMsg)
+	return sendMessage(writer, w, sseMsg, doFlush)
 }
 
 func createStreamMessage(chatId string, now int64, req openai.ChatCompletionRequest, fingerPrint string, conent string, reasoningContent string) openai.ChatCompletionStreamResponse {
@@ -408,7 +425,7 @@ func createThinkMessage(chatId string, now int64, req openai.ChatCompletionReque
 	}
 }
 
-func sendMessage(writer *bufio.Writer, w io.Writer, sseMsg openai.ChatCompletionStreamResponse) error {
+func sendMessage(writer *bufio.Writer, w io.Writer, sseMsg openai.ChatCompletionStreamResponse, doFlush bool) error {
 	sendLine, err := sonic.MarshalString(sseMsg)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
@@ -419,7 +436,10 @@ func sendMessage(writer *bufio.Writer, w io.Writer, sseMsg openai.ChatCompletion
 		return fmt.Errorf("write error: %w", err)
 	}
 
-	return flushWriter(writer, w)
+	if doFlush {
+		return flushWriter(writer, w)
+	}
+	return nil
 }
 
 func sendHeartbeat(writer *bufio.Writer, w io.Writer) error {

@@ -19,6 +19,7 @@ func main() {
 	monicaCookie := flag.String("c", "", "Monica Cookie值 (MONICA_COOKIE)")
 	bearerToken := flag.String("k", "", "Bearer Token值 (BEARER_TOKEN)")
 	isIncognito := flag.Bool("i", true, "是否启用隐身模式 (IS_INCOGNITO)")
+	debug := flag.Bool("d", false, "是否启用调试日志 (DEBUG，输出 metrics 等)")
 
 	flag.Usage = func() {
 		fmt.Printf("用法: %s [选项]\n\n", flag.CommandLine.Name())
@@ -38,8 +39,9 @@ func main() {
 	if *bearerToken != "" {
 		cfg.BearerToken = *bearerToken
 	}
-	// 设置 IsIncognito 值
+	// 设置 IsIncognito 和 Debug 值
 	cfg.IsIncognito = *isIncognito
+	cfg.Debug = *debug
 
 	// 检查必要的配置
 	if cfg.MonicaCookie == "" {

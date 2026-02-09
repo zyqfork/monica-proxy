@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,6 +14,7 @@ type Config struct {
 	MonicaCookie string
 	BearerToken  string
 	IsIncognito  bool
+	Debug        bool // 为 true 时输出 metrics 等调试日志
 }
 
 // LoadConfig 从环境变量加载配置
@@ -24,6 +26,7 @@ func LoadConfig() *Config {
 		MonicaCookie: os.Getenv("MONICA_COOKIE"),
 		BearerToken:  os.Getenv("BEARER_TOKEN"),
 		IsIncognito:  os.Getenv("IS_INCOGNITO") == "true",
+		Debug:        strings.ToLower(os.Getenv("DEBUG")) == "true" || os.Getenv("DEBUG") == "1",
 	}
 	return MonicaConfig
 }
