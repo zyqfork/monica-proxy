@@ -8,16 +8,18 @@ import (
 	"monica-proxy/internal/utils"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/google/uuid"
 )
 
-const MaxFileSize = 10 * 1024 * 1024 // 10MB
+const (
+	MaxFileSize     = 10 * 1024 * 1024 // 10MB
+	imageCacheSize  = 1000             // 图片缓存最大条目数，防止内存无限增长
+)
 
-var imageCache sync.Map
+var imageCache = NewLRUCache(imageCacheSize)
 
 // sampleAndHash 对base64字符串进行采样并计算xxHash
 func sampleAndHash(data string) string {
@@ -47,7 +49,7 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 
 	// 2. 检查缓存
 	if value, exists := imageCache.Load(cacheKey); exists {
-		return value.(*FileInfo), nil
+		return value, nil
 	}
 
 	// 3. 解析base64数据
@@ -173,7 +175,7 @@ func UploadBase64Image(ctx context.Context, base64Data string) (*FileInfo, error
 	fileInfo.URL = ""
 	fileInfo.ObjectURL = ""
 
-	// 9. 保存到缓存
+	// 9. 保存到 LRU 缓存（超出容量时自动淘汰最久未使用的图片）
 	imageCache.Store(cacheKey, fileInfo)
 
 	return fileInfo, nil

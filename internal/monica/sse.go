@@ -80,15 +80,39 @@ func ProcessMonicaResponse(ctx context.Context, req openai.ChatCompletionRequest
 	chatId := utils.RandStringUsingMathRand(29)
 	now := time.Now().Unix()
 
+	// 使用 goroutine 异步读取，避免 ReadString 阻塞导致无法响应 context 取消
+	type readResult struct {
+		line string
+		err  error
+	}
+	lineChan := make(chan readResult, 1)
+	go func() {
+		defer close(lineChan)
+		for {
+			line, err := reader.ReadString('\n')
+			select {
+			case lineChan <- readResult{line: line, err: err}:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return openai.ChatCompletionResponse{}, ctx.Err()
-		default:
-			line, err := reader.ReadString('\n')
+		case result, ok := <-lineChan:
+			if !ok {
+				//  channel 关闭通常表示 goroutine 因 context 取消而退出
+				return openai.ChatCompletionResponse{}, ctx.Err()
+			}
+			line, err := result.line, result.err
 			if err != nil {
 				if err == io.EOF {
-					// 处理完所有数据
 					return createMessage(chatId, now, req, utils.CalculateUsage(req, fullContent.String()), fullContent.String(), fp), nil
 				}
 				return openai.ChatCompletionResponse{}, fmt.Errorf("读取错误: %w", err)
@@ -167,6 +191,27 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 	metricsLogger := time.NewTicker(5 * time.Second)
 	defer metricsLogger.Stop()
 
+	// 使用 goroutine 异步读取，避免 ReadString 阻塞导致无法响应 context 取消
+	type readResult struct {
+		line string
+		err  error
+	}
+	lineChan := make(chan readResult, 1)
+	go func() {
+		defer close(lineChan)
+		for {
+			line, err := reader.ReadString('\n')
+			select {
+			case lineChan <- readResult{line: line, err: err}:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -179,80 +224,82 @@ func StreamMonicaSSEToClient(ctx context.Context, req openai.ChatCompletionReque
 		case <-metricsLogger.C:
 			logMetrics(metrics)
 			continue
-		default:
-			// 继续正常处理
-		}
-
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
+		case result, ok := <-lineChan:
+			if !ok {
 				log.Printf("Reached EOF after %d messages", messageCount)
 				return nil
 			}
-			return fmt.Errorf("read error: %w", err)
-		}
-
-		//log.Printf(line)
-		lineSize := int64(len(line))
-		newBufferSize := atomic.AddInt64(&totalBufferSize, lineSize)
-
-		if newBufferSize > maxBufferSize {
-			atomic.AddInt64(&metrics.ErrorCount, 1)
-			log.Printf("Buffer overflow: current size %d exceeds max size %d", newBufferSize, maxBufferSize)
-			return fmt.Errorf("buffer overflow: exceeded maximum buffer size of %d bytes", maxBufferSize)
-		}
-
-		messageBuffer.WriteString(line)
-		metrics.updateBufferUsage(lineSize)
-		atomic.AddInt64(&metrics.TotalProcessed, lineSize)
-
-		if !strings.HasSuffix(line, "\n") {
-			continue
-		}
-
-		atomic.AddInt64(&totalBufferSize, -int64(messageBuffer.Len()))
-		message := messageBuffer.String()
-		messageBuffer.Reset()
-
-		if !strings.HasPrefix(message, "data: ") {
-			continue
-		}
-
-		jsonStr := strings.TrimSpace(strings.TrimPrefix(message, "data: "))
-		if jsonStr == "" {
-			continue
-		}
-
-		var sseData SSEData
-		if err := sonic.UnmarshalString(jsonStr, &sseData); err != nil {
-			atomic.AddInt64(&metrics.ErrorCount, 1)
-			log.Printf("Error unmarshaling SSE data: %v", err)
-			continue
-		}
-
-		//log.Printf("Received SSE data: %+v", sseData)
-
-		messageCount++
-		atomic.AddInt64(&metrics.CurrentMessages, 1)
-
-		if err := retryProcessMessage(writer, w, sseData, chatId, fingerprint, now, &thinkFlag, metrics, &completionBuilder, req); err != nil {
-			log.Printf("Failed to process message after %d retries: %v", maxRetries, err)
-			return err
-		}
-
-		if messageCount >= flushThreshold {
-			if err := flushWriter(writer, w); err != nil {
-				return fmt.Errorf("flush error: %w", err)
+			line, err := result.line, result.err
+			if err != nil {
+				if err == io.EOF {
+					log.Printf("Reached EOF after %d messages", messageCount)
+					return nil
+				}
+				return fmt.Errorf("read error: %w", err)
 			}
-			messageCount = 0
-		}
 
-		if sseData.Finished {
-			if err := sendFinishSignal(writer, w); err != nil {
-				return fmt.Errorf("finish signal error: %w", err)
+			//log.Printf(line)
+			lineSize := int64(len(line))
+			newBufferSize := atomic.AddInt64(&totalBufferSize, lineSize)
+
+			if newBufferSize > maxBufferSize {
+				atomic.AddInt64(&metrics.ErrorCount, 1)
+				log.Printf("Buffer overflow: current size %d exceeds max size %d", newBufferSize, maxBufferSize)
+				return fmt.Errorf("buffer overflow: exceeded maximum buffer size of %d bytes", maxBufferSize)
 			}
-			log.Printf("Stream completed successfully after %d messages", atomic.LoadInt64(&metrics.CurrentMessages))
-			return nil
+
+			messageBuffer.WriteString(line)
+			metrics.updateBufferUsage(lineSize)
+			atomic.AddInt64(&metrics.TotalProcessed, lineSize)
+
+			if !strings.HasSuffix(line, "\n") {
+				continue
+			}
+
+			atomic.AddInt64(&totalBufferSize, -int64(messageBuffer.Len()))
+			message := messageBuffer.String()
+			messageBuffer.Reset()
+
+			if !strings.HasPrefix(message, "data: ") {
+				continue
+			}
+
+			jsonStr := strings.TrimSpace(strings.TrimPrefix(message, "data: "))
+			if jsonStr == "" {
+				continue
+			}
+
+			var sseData SSEData
+			if err := sonic.UnmarshalString(jsonStr, &sseData); err != nil {
+				atomic.AddInt64(&metrics.ErrorCount, 1)
+				log.Printf("Error unmarshaling SSE data: %v", err)
+				continue
+			}
+
+			//log.Printf("Received SSE data: %+v", sseData)
+
+			messageCount++
+			atomic.AddInt64(&metrics.CurrentMessages, 1)
+
+			if err := retryProcessMessage(writer, w, sseData, chatId, fingerprint, now, &thinkFlag, metrics, &completionBuilder, req); err != nil {
+				log.Printf("Failed to process message after %d retries: %v", maxRetries, err)
+				return err
+			}
+
+			if messageCount >= flushThreshold {
+				if err := flushWriter(writer, w); err != nil {
+					return fmt.Errorf("flush error: %w", err)
+				}
+				messageCount = 0
+			}
+
+			if sseData.Finished {
+				if err := sendFinishSignal(writer, w); err != nil {
+					return fmt.Errorf("finish signal error: %w", err)
+				}
+				log.Printf("Stream completed successfully after %d messages", atomic.LoadInt64(&metrics.CurrentMessages))
+				return nil
+			}
 		}
 	}
 }
