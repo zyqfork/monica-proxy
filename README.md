@@ -70,67 +70,128 @@ docker run --pull=always -d \
    docker-compose up -d
    ```
 
-服务将在 `http://ip:8080/v1/chat/completions` 上运行。
+服务将在 `http://ip:8080` 上运行。
 
-## API 使用
+## API 接口说明
 
-兼容 ChatGPT API 格式，地址为：
-
-```
-http://ip:8080/v1/chat/completions
-```
-
-### 认证
-
-所有 API 请求都需要在 HTTP 头部包含 Bearer Token 认证信息：
+兼容 OpenAI/ChatGPT API 格式，所有请求需在 Header 中携带 Bearer Token：
 
 ```http
 Authorization: Bearer YOUR_BEARER_TOKEN
+Content-Type: application/json
 ```
 
-示例请求：
+### 1. 获取模型列表
+
+**GET** `/v1/models`
+
+返回当前支持的模型列表，响应格式与 OpenAI 一致。
+
+**请求示例：**
 
 ```bash
-# 获取支持的模型列表
-curl --location 'http://ip:8080/v1/models' \
---header 'Authorization: Bearer YOUR_BEARER_TOKEN'
+curl -X GET "http://ip:8080/v1/models" \
+  -H "Authorization: Bearer YOUR_BEARER_TOKEN"
+```
 
-# openai 请求
-curl -X POST http://ip:8080/v1/chat/completions \
+**响应示例：**
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-4o",
+      "object": "model",
+      "owned_by": "monica"
+    }
+  ]
+}
+```
+
+### 2. 聊天补全（对话）
+
+**POST** `/v1/chat/completions`
+
+**请求体参数（与 OpenAI 兼容）：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `model` | string | 是 | 模型 ID，见下方「支持的模型」 |
+| `messages` | array | 是 | 消息列表，每项含 `role`（user/assistant/system）和 `content` |
+| `stream` | boolean | 否 | 是否流式返回，默认 `false` |
+| `max_tokens` | number | 否 | 最大生成 token 数 |
+| `temperature` | number | 否 | 采样温度 |
+| `top_p` | number | 否 | 核采样参数 |
+
+**请求示例：**
+
+```bash
+# 流式请求
+curl -X POST "http://ip:8080/v1/chat/completions" \
   -H "Authorization: Bearer YOUR_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
     "messages": [
-      {
-        "role": "user",
-        "content": "你好"
-      }
+      {"role": "user", "content": "你好"}
     ],
     "stream": true
   }'
+
+# 非流式请求
+curl -X POST "http://ip:8080/v1/chat/completions" \
+  -H "Authorization: Bearer YOUR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {"role": "system", "content": "你是一个助手"},
+      {"role": "user", "content": "介绍一下自己"}
+    ],
+    "stream": false
+  }'
 ```
-# 支持的Monica模型列表
-| id                         | object |  owned_by  |
-|----------------------------|--------|-------|
-| gpt-4o                     | model  | Monica |
-| gpt-4o-mini                | model  | Monica |
-| openai-o1                  | model  | Monica |
-| openai-o-3-mini            | model  | Monica |
-| claude-3.5-haiku           | model  | Monica |
-| claude-3.5-sonnet           | model  | Monica |
-| claude-3.7-sonnet          | model  | Monica |
-| claude-3.7-sonnet-thinking | model  | Monica |
-| claude-4-sonnet            | model  | Monica |
-| claude-4-opus              | model  | Monica |
-| gemini-2.0                 | model  | Monica |
-| gemini-2.0-flash-think     | model  | Monica |
-| gemini-2.0-pro             | model  | Monica |
-| deepseek-reasoner          | model  | Monica |
-| deepseek-chat              | model  | Monica |
-| llama-3.3-70b              | model  | Monica |
-| llama-3.1-405b             | model  | Monica |
-| deepclaude                 | model  | Monica |
+
+**响应：**
+
+- `stream: false`：返回 JSON 对象，格式同 OpenAI Chat Completions。
+- `stream: true`：返回 SSE（Server-Sent Events）流，每行 `data: {...}`，以 `data: [DONE]` 结束。
+
+## 支持的 Monica 模型
+
+请求体中的 `model` 需使用下表中的 **id**。
+
+| 分类 | model id | 说明 |
+|------|----------|------|
+| **OpenAI** | `gpt-5` | GPT-5 |
+| | `gpt-5.1` | GPT-5.1 |
+| | `gpt-5.2` | GPT-5.2 |
+| | `gpt-4o` | GPT-4o |
+| | `gpt-4.1` | GPT-4.1 |
+| | `gpt-4.5-preview` | GPT-4.5 |
+| | `gpt-4o-mini` | GPT-4o mini |
+| | `dall-e-3` | DALL·E 3（文生图） |
+| | `openai-o1` | o1 |
+| | `openai-o-3-mini` | o3-mini |
+| **Claude** | `claude-3.5-haiku` | Claude 3.5 Haiku |
+| | `claude-3.5-sonnet` | Claude 3.5 Sonnet V2 |
+| | `claude-3.7-sonnet` | Claude 3.7 Sonnet |
+| | `claude-3.7-sonnet-thinking` | Claude 3.7 Sonnet Thinking |
+| | `claude-4-sonnet` | Claude 4 Sonnet |
+| | `claude-4-opus` | Claude 4 Opus |
+| | `claude-sonnet-4-5` | Claude 4.5 Sonnet |
+| | `claude-sonnet-4-6` | Claude 4.6 Sonnet |
+| | `deepclaude` | DeepClaude |
+| **Grok** | `grok-3-beta` | Grok 3 |
+| | `grok-4-0709` | Grok 4 |
+| **Gemini** | `gemini-2.5-pro` | Gemini 2.5 Pro |
+| | `gemini-2.5-flash` | Gemini 2.5 Flash |
+| | `gemini-3-pro-preview-thinking` | Gemini 3 Pro（带思考过程） |
+| **DeepSeek** | `deepseek-chat` | DeepSeek V3 |
+| | `deepseek-reasoner` | DeepSeek R1 |
+| **Llama** | `llama-3.3-70b` | Llama 3.3 70B |
+| | `llama-3.1-405b` | Llama 3.1 405B |
 
 ## 注意事项
 

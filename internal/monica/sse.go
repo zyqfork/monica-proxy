@@ -37,13 +37,22 @@ type SSEData struct {
 }
 
 type AgentStatus struct {
-	UID      string `json:"uid"`
-	Type     string `json:"type"`
-	Text     string `json:"text"`
-	Metadata struct {
-		Title           string `json:"title"`
-		ReasoningDetail string `json:"reasoning_detail"`
-	} `json:"metadata"`
+	UID      string              `json:"uid"`
+	Type     string              `json:"type"`
+	Text     string              `json:"text"`
+	Metadata AgentStatusMetadata `json:"metadata"`
+}
+
+// AgentStatusMetadata 兼容 thinking 的 reasoning_detail 与 draw_img_result 的 image_url 等
+type AgentStatusMetadata struct {
+	Title              string `json:"title"`
+	ReasoningDetail    string `json:"reasoning_detail"`
+	EventType          string `json:"event_type"`
+	CallerType         string `json:"caller_type"`
+	ImageURL           string `json:"image_url"`
+	ThumbnailImageURL  string `json:"thumbnail_image_url"`
+	ImageSize          string `json:"image_size"`
+	ImageID            string `json:"image_id"`
 }
 
 type Metrics struct {
@@ -147,6 +156,16 @@ func ProcessMonicaResponse(ctx context.Context, req openai.ChatCompletionRequest
 				if inThinkBlock {
 					thinkContent.WriteString(sseData.AgentStatus.Metadata.ReasoningDetail)
 				}
+			} else if sseData.AgentStatus.Type == "draw_img_result" && sseData.AgentStatus.Metadata.ImageURL != "" {
+				// DALL·E 等绘图结果：将图片 URL 以 Markdown 形式写入正文
+				if inThinkBlock {
+					thinkContent.WriteString("</think>")
+					fullContent.WriteString(thinkContent.String())
+					thinkContent.Reset()
+					inThinkBlock = false
+				}
+				fullContent.WriteString("\n![image](" + sseData.AgentStatus.Metadata.ImageURL + ")\n")
+				fullContent.WriteString(sseData.Text)
 			} else {
 				// 普通文本内容
 				if inThinkBlock {
@@ -347,6 +366,12 @@ func processMessage(writer *bufio.Writer, w io.Writer, sseData SSEData, chatId, 
 
 	if sseData.AgentStatus.Type == "thinking_detail_stream" {
 		sseMsg = createStreamMessage(chatId, now, req, fingerprint, "", sseData.AgentStatus.Metadata.ReasoningDetail)
+		completionBuilder.WriteString(sseData.Text)
+	} else if sseData.AgentStatus.Type == "draw_img_result" && sseData.AgentStatus.Metadata.ImageURL != "" {
+		// DALL·E 等绘图结果：将图片以 Markdown 形式下发给客户端
+		imgContent := "\n![image](" + sseData.AgentStatus.Metadata.ImageURL + ")\n"
+		sseMsg = createStreamMessage(chatId, now, req, fingerprint, imgContent, "")
+		completionBuilder.WriteString(imgContent)
 		completionBuilder.WriteString(sseData.Text)
 	} else {
 		sseMsg = createStreamMessage(chatId, now, req, fingerprint, sseData.Text, "")

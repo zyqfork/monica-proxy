@@ -213,12 +213,15 @@ type OpenAIModelList struct {
 
 var modelMap = map[string]OpenAIModel{
 	"gpt-5":                      {Object: "model", OwnedBy: "monica", BotUid: "gpt_5", Origin: "https://monica.im/home/chat/GPT-5/gpt_5", OriginPageTitle: "GPT-5 - Monica 智能体"},
+	"gpt-5.1":                    {Object: "model", OwnedBy: "monica", BotUid: "gpt_5_1", Origin: "https://monica.im/home/chat/GPT-5.1/gpt_5_1", OriginPageTitle: "GPT-5.1 - Monica 智能体"},
+	"gpt-5.2":                    {Object: "model", OwnedBy: "monica", BotUid: "gpt_5_2", Origin: "https://monica.im/home/chat/GPT-5.2/gpt_5_2", OriginPageTitle: "GPT-5.2 - Monica 智能体"},
 	"gpt-4o":                     {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_o_mini_chat", Origin: "https://monica.im/home/chat/gpt-4o/gpt_4_o_chat", OriginPageTitle: "GPT-4o - Monica 智能体"},
 	"gpt-4.1":                    {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_1", Origin: "https://monica.im/home/chat/GPT-4.1/gpt_4_1", OriginPageTitle: "GPT-4.1 - Monica 智能体"},
 	"gpt-4.5-preview":            {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_5_chat", Origin: "https://monica.im/home/chat/GPT-4.5/gpt_4_5_chat", OriginPageTitle: "GPT-4.5 - Monica 智能体"},
 	"openai-o1":                  {Object: "model", OwnedBy: "monica", BotUid: "openai_o1", Origin: "https://monica.im/home/chat/o1/openai_o1", OriginPageTitle: "o1 - Monica 智能体"},
 	"openai-o-3-mini":            {Object: "model", OwnedBy: "monica", BotUid: "openai_o_3_mini", Origin: "https://monica.im/home/chat/o3-mini/openai_o_3_mini", OriginPageTitle: "o3-mini - Monica 智能体"},
 	"gpt-4o-mini":                {Object: "model", OwnedBy: "monica", BotUid: "gpt_4_o_mini_chat", Origin: "https://monica.im/home/chat/gpt-4o-mini/gpt_4_o_mini_chat", OriginPageTitle: "GPT-4o mini - Monica 智能体"},
+	"dall-e-3":                   {Object: "model", OwnedBy: "monica", BotUid: "dall_e_3_chat", Origin: "https://monica.im/home/chat/DALL%C2%B7E%203/dall_e_3_chat", OriginPageTitle: "DALL·E 3 - Monica 智能体"},
 	"grok-3-beta":                {Object: "model", OwnedBy: "monica", BotUid: "grok_3_beta", Origin: "https://monica.im/home/chat/Grok%203/grok_3_beta", OriginPageTitle: "Grok 3 - Monica 智能体"},
 	"grok-4-0709":                {Object: "model", OwnedBy: "monica", BotUid: "grok_4", Origin: "https://monica.im/home/chat/Grok%204/grok_4", OriginPageTitle: "Grok 4 - Monica 智能体"},
 	"claude-3.5-haiku":           {Object: "model", OwnedBy: "monica", BotUid: "claude_3.5_haiku", Origin: "https://monica.im/home/chat/Claude%203.5%20Haiku/claude_3.5_haiku", OriginPageTitle: "Claude 3.5 Haiku - Monica 智能体"},
@@ -232,6 +235,7 @@ var modelMap = map[string]OpenAIModel{
 	"deepclaude":                 {Object: "model", OwnedBy: "monica", BotUid: "deepclaude", Origin: "https://monica.im/home/chat/DeepClaude/deepclaude", OriginPageTitle: "DeepClaude - Monica 智能体"},
 	"gemini-2.5-pro":             {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_5_pro", Origin: "https://monica.im/home/chat/Gemini%202.5%20Pro/gemini_2_5_pro", OriginPageTitle: "Gemini 2.5 Pro - Monica 智能体"},
 	"gemini-2.5-flash":           {Object: "model", OwnedBy: "monica", BotUid: "gemini_2_5_flash", Origin: "https://monica.im/home/chat/Gemini%202.5%20Flash/gemini_2_5_flash", OriginPageTitle: "Gemini 2.5 Flash - Monica 智能体"},
+	"gemini-3-pro-preview-thinking": {Object: "model", OwnedBy: "monica", BotUid: "gemini_3_pro_preview_think", Origin: "https://monica.im/home/chat/Gemini%203%20Pro/gemini_3_pro_preview_think", OriginPageTitle: "Gemini 3 Pro - Monica 智能体"},
 	"deepseek-chat":              {Object: "model", OwnedBy: "monica", BotUid: "deepseek_chat", Origin: "https://monica.im/home/chat/DeepSeek%20V3/deepseek_chat", OriginPageTitle: "DeepSeek V3 - Monica 智能体"},
 	"deepseek-reasoner":          {Object: "model", OwnedBy: "monica", BotUid: "deepseek_reasoner", Origin: "https://monica.im/home/chat/DeepSeek%20R1/deepseek_reasoner", OriginPageTitle: "DeepSeek R1 - Monica 智能体"},
 	"llama-3.3-70b":              {Object: "model", OwnedBy: "monica", BotUid: "llama_3_3_70b", Origin: "https://monica.im/home/chat/Llama%203.3%2070B/llama_3_3_70b", OriginPageTitle: "Llama 3.3 70B - Monica 智能体"},
