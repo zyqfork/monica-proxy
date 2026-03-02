@@ -1,8 +1,7 @@
-FROM golang:alpine AS builder
+FROM golang:1.23-alpine AS builder
 
-ADD ./ monica-proxy
-
-WORKDIR monica-proxy
+ADD . /go/monica-proxy
+WORKDIR /go/monica-proxy
 
 RUN go build -o monica-proxy
 
