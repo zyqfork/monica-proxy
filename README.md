@@ -167,6 +167,7 @@ curl -X POST "http://ip:8080/v1/chat/completions" \
 | **OpenAI** | `gpt-5` | GPT-5 |
 | | `gpt-5.1` | GPT-5.1 |
 | | `gpt-5.2` | GPT-5.2 |
+| | `gpt-5.5` | Monica 主聊天（GPT-5.5） |
 | | `gpt-4o` | GPT-4o |
 | | `gpt-4.1` | GPT-4.1 |
 | | `gpt-4.5-preview` | GPT-4.5 |
@@ -188,6 +189,7 @@ curl -X POST "http://ip:8080/v1/chat/completions" \
 | **Gemini** | `gemini-2.5-pro` | Gemini 2.5 Pro |
 | | `gemini-2.5-flash` | Gemini 2.5 Flash |
 | | `gemini-3-pro-preview-thinking` | Gemini 3 Pro（带思考过程） |
+| | `gemini-3.5-flash-thinking` | Gemini 3.5 Flash（带思考过程） |
 | **DeepSeek** | `deepseek-chat` | DeepSeek V3 |
 | | `deepseek-reasoner` | DeepSeek R1 |
 | **Llama** | `llama-3.3-70b` | Llama 3.3 70B |
