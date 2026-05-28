@@ -34,3 +34,8 @@ go.work.sum
 
 # windsurf rules
 .windsurfrules
+
+# Responses session cache (SQLite)
+.monica-proxy-cache/
+**/sessions.db
+**/sessions.db-*

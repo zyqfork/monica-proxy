@@ -22,13 +22,13 @@ func main() {
 	bearerToken := flag.String("k", "", "Bearer Token值 (BEARER_TOKEN)")
 	isIncognito := flag.Bool("i", true, "是否启用隐身模式 (IS_INCOGNITO)")
 	debug := flag.Bool("d", false, "是否启用调试日志 (DEBUG，输出 metrics 等)")
-	cacheDir := flag.String("cache-dir", "", "Responses 有状态会话磁盘缓存目录 (SESSION_CACHE_DIR，默认 ./.monica-proxy-cache)")
+	cacheDir := flag.String("cache-dir", "", "Responses 有状态会话 SQLite 目录或 .db 文件路径 (SESSION_CACHE_DIR，默认 ./.monica-proxy-cache/sessions.db)")
 
 	flag.Usage = func() {
 		fmt.Printf("用法: %s [选项]\n\n", flag.CommandLine.Name())
 		fmt.Println("选项:")
 		flag.PrintDefaults()
-		fmt.Println("\n示例: ./monica-proxy -p 8080 -c \"cookie\" -k \"token\" -cache-dir ./data/sessions")
+		fmt.Println("\n示例: ./monica-proxy -p 8080 -c \"cookie\" -k \"token\" -cache-dir ./data")
 	}
 
 	// 解析命令行参数
@@ -60,7 +60,7 @@ func main() {
 		log.Fatal("Bearer Token is required. Please set it via -k flag or BEARER_TOKEN environment variable")
 	}
 
-	if err := types.InitDiskSessionStore(cfg.SessionCacheDir, 30*24*time.Hour); err != nil {
+	if err := types.InitSessionStore(cfg.SessionCacheDir, 30*24*time.Hour); err != nil {
 		log.Fatalf("init session cache: %v", err)
 	}
 
@@ -77,7 +77,8 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	log.Printf("Server starting on %s", addr)
 	log.Printf("Incognito mode: %v", cfg.IsIncognito)
-	log.Printf("Session cache dir: %s (TTL 30 days, store=true enables stateful mode)", cfg.SessionCacheDir)
+	dbPath, _ := types.ResolveSessionDBPath(cfg.SessionCacheDir)
+	log.Printf("Session cache (SQLite): %s (TTL 30 days, store=true enables stateful mode)", dbPath)
 	if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("start server error: %v", err)
 	}
