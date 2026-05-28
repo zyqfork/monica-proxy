@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 	"monica-proxy/internal/config"
+	"strings"
 	"sync"
 
 	lop "github.com/samber/lo/parallel"
 
 	"github.com/google/uuid"
-	"github.com/sashabaranov/go-openai"
 )
 
 //const (
@@ -66,12 +66,14 @@ type MessageContent struct {
 // MonicaRequest 为 Monica 自定义 AI 的请求格式
 // 注意：以下字段仅示例。真正要与 Monica 对接时，请根据其 API 要求调整字段。
 type MonicaRequest struct {
-	TaskUID  string    `json:"task_uid"`
-	BotUID   string    `json:"bot_uid"`
-	Data     DataField `json:"data"`
-	Language string    `json:"language"`
-	TaskType string    `json:"task_type"`
-	ToolData ToolData  `json:"tool_data"`
+	TaskUID         string    `json:"task_uid"`
+	BotUID          string    `json:"bot_uid"`
+	Data            DataField `json:"data"`
+	Language        string    `json:"language"`
+	Locale          string    `json:"locale,omitempty"`
+	TaskType        string    `json:"task_type"`
+	ToolData        ToolData  `json:"tool_data"`
+	AIRespLanguage  string    `json:"ai_resp_language,omitempty"`
 }
 
 // DataField 在 Monica 的 body 中
@@ -84,6 +86,7 @@ type DataField struct {
 	OriginPageTitle     string `json:"origin_page_title"`
 	TriggerBy           string `json:"trigger_by"`
 	UseModel            string `json:"use_model,omitempty"`
+	KnowledgeSource     string `json:"knowledge_source,omitempty"`
 	IsIncognito         bool   `json:"is_incognito"`
 	UseNewMemory        bool   `json:"use_new_memory"`
 	UseMemorySuggestion bool   `json:"use_memory_suggestion"`
@@ -94,23 +97,77 @@ type Item struct {
 	ParentItemID   string      `json:"parent_item_id,omitempty"`
 	ItemID         string      `json:"item_id"`
 	ItemType       string      `json:"item_type"`
+	Summary        string      `json:"summary,omitempty"`
 	Data           ItemContent `json:"data"`
 }
 
 type ItemContent struct {
-	Type                   string     `json:"type"`
-	Content                string     `json:"content"`
-	MaxToken               int        `json:"max_token,omitempty"`
-	IsIncognito            bool       `json:"is_incognito,omitempty"` // 是否无痕模式
-	FromTaskType           string     `json:"from_task_type,omitempty"`
-	ManualWebSearchEnabled bool       `json:"manual_web_search_enabled,omitempty"` // 网页搜索
-	UseModel               string     `json:"use_model,omitempty"`
-	FileInfos              []FileInfo `json:"file_infos,omitempty"`
+	Type                   string             `json:"type"`
+	Content                string             `json:"content"`
+	QuoteContent           string             `json:"quote_content,omitempty"`
+	ChatModel              string             `json:"chat_model,omitempty"`
+	MaxToken               int                `json:"max_token,omitempty"`
+	IsIncognito            bool               `json:"is_incognito,omitempty"`
+	FromTaskType           string             `json:"from_task_type,omitempty"`
+	ManualWebSearchEnabled bool               `json:"manual_web_search_enabled,omitempty"`
+	UseModel               string             `json:"use_model,omitempty"`
+	QuestionID             string             `json:"question_id,omitempty"`
+	AgentStatus            []AgentStatusEntry `json:"agent_status,omitempty"`
+	Artifacts              []any              `json:"artifacts,omitempty"`
+	FollowSuggestions      []FollowSuggestion `json:"follow_suggestions,omitempty"`
+	FileInfos              []FileInfo         `json:"file_infos,omitempty"`
 }
 
-// ToolData 这里演示放空
+type AgentStatusEntry struct {
+	UID  string `json:"uid"`
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type FollowSuggestion struct {
+	Text string `json:"text"`
+	Type string `json:"type"`
+}
+
+type SysSkill struct {
+	UID             string `json:"uid"`
+	AllowUserModify bool   `json:"allow_user_modify"`
+	Enable          bool   `json:"enable"`
+	ForceEnable     bool   `json:"force_enable"`
+}
+
+// ToolData Monica 工具开关
 type ToolData struct {
-	SysSkillList []string `json:"sys_skill_list"`
+	SysSkillList []SysSkill `json:"sys_skill_list"`
+}
+
+func defaultMonicaToolData() ToolData {
+	return ToolData{SysSkillList: []SysSkill{
+		{UID: "memory", AllowUserModify: false, Enable: false, ForceEnable: false},
+		{UID: "code_interpreter", AllowUserModify: false, Enable: true, ForceEnable: false},
+		{UID: "web_access", AllowUserModify: false, Enable: true, ForceEnable: false},
+		{UID: "draw_image", AllowUserModify: false, Enable: true, ForceEnable: false},
+		{UID: "book_calendar", AllowUserModify: false, Enable: true, ForceEnable: false},
+		{UID: "artifacts", AllowUserModify: false, Enable: true, ForceEnable: false},
+		{UID: "use_custom_memory", AllowUserModify: false, Enable: false, ForceEnable: false},
+	}}
+}
+
+func chatModelForAPI(model string) string {
+	switch model {
+	case "gpt-5.5":
+		return "gpt_5_5"
+	case "gpt-5", "gpt-5.1", "gpt-5.2":
+		return strings.ReplaceAll(model, "-", "_")
+	case "gpt-4o", "gpt-4o-mini":
+		return strings.ReplaceAll(model, "-", "_")
+	default:
+		m, ok := modelMap[model]
+		if ok {
+			return m.BotUid
+		}
+		return strings.ReplaceAll(model, "-", "_")
+	}
 }
 
 // PreSignRequest 预签名请求
@@ -249,6 +306,15 @@ func IsModelSupported(modelName string) bool {
 	return exists
 }
 
+func GetModelInfo(modelName string) OpenAIModel {
+	m, ok := modelMap[modelName]
+	if !ok {
+		return OpenAIModel{}
+	}
+	m.ID = modelName
+	return m
+}
+
 var (
 	cachedModels     OpenAIModelList
 	cachedModelsOnce sync.Once
@@ -271,7 +337,7 @@ func GetSupportedModels() OpenAIModelList {
 }
 
 // ChatGPTToMonica 将 ChatGPTRequest 转换为 MonicaRequest
-func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, error) {
+func ChatGPTToMonica(chatReq ChatCompletionRequest) (*MonicaRequest, error) {
 	if len(chatReq.Messages) == 0 {
 		return nil, fmt.Errorf("empty messages")
 	}
@@ -301,7 +367,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 			continue
 		}
 		var msgContext string
-		var imgUrl []*openai.ChatMessageImageURL
+		var imgUrl []*ChatMessageImageURL
 		if len(msg.MultiContent) > 0 { // 说明应该是多内容，可能是图片内容
 			for _, content := range msg.MultiContent {
 				switch content.Type {
@@ -325,7 +391,7 @@ func ChatGPTToMonica(chatReq openai.ChatCompletionRequest) (*MonicaRequest, erro
 		var content ItemContent
 		if len(imgUrl) > 0 {
 			ctx := context.Background()
-			fileIfoList := lop.Map(imgUrl, func(item *openai.ChatMessageImageURL, _ int) FileInfo {
+			fileIfoList := lop.Map(imgUrl, func(item *ChatMessageImageURL, _ int) FileInfo {
 				f, err := UploadBase64Image(ctx, item.URL)
 				if err != nil {
 					log.Println(err)

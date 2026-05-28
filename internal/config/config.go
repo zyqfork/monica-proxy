@@ -11,10 +11,11 @@ var MonicaConfig *Config
 
 // Config 存储应用配置
 type Config struct {
-	MonicaCookie string
-	BearerToken  string
-	IsIncognito  bool
-	Debug        bool // 为 true 时输出 metrics 等调试日志
+	MonicaCookie     string
+	BearerToken      string
+	IsIncognito      bool
+	Debug            bool // 为 true 时输出 metrics 等调试日志
+	SessionCacheDir  string
 }
 
 // LoadConfig 从环境变量加载配置
@@ -23,10 +24,11 @@ func LoadConfig() *Config {
 	_ = godotenv.Load()
 
 	MonicaConfig = &Config{
-		MonicaCookie: os.Getenv("MONICA_COOKIE"),
-		BearerToken:  os.Getenv("BEARER_TOKEN"),
-		IsIncognito:  os.Getenv("IS_INCOGNITO") == "true",
-		Debug:        strings.ToLower(os.Getenv("DEBUG")) == "true" || os.Getenv("DEBUG") == "1",
+		MonicaCookie:    os.Getenv("MONICA_COOKIE"),
+		BearerToken:     os.Getenv("BEARER_TOKEN"),
+		IsIncognito:     os.Getenv("IS_INCOGNITO") == "true",
+		Debug:           strings.ToLower(os.Getenv("DEBUG")) == "true" || os.Getenv("DEBUG") == "1",
+		SessionCacheDir: os.Getenv("SESSION_CACHE_DIR"),
 	}
 	return MonicaConfig
 }

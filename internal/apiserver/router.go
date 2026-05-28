@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/sashabaranov/go-openai"
 )
 
 // RegisterRoutes 注册 Echo 路由
@@ -18,12 +17,14 @@ func RegisterRoutes(e *echo.Echo) {
 
 	// ChatGPT 风格的请求转发到 /v1/chat/completions
 	e.POST("/v1/chat/completions", handleChatCompletion)
+	// OpenAI Responses API（推荐：通过 previous_response_id 复用 Monica 会话）
+	e.POST("/v1/responses", handleCreateResponse)
 	// 获取支持的模型列表
 	e.GET("/v1/models", handleListModels)
 }
 
 func handleChatCompletion(c echo.Context) error {
-	var req openai.ChatCompletionRequest
+	var req types.ChatCompletionRequest
 
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{

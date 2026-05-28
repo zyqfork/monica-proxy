@@ -109,9 +109,58 @@ curl -X GET "http://ip:8080/v1/models" \
 }
 ```
 
-### 2. 聊天补全（对话）
+### 2. Responses API（推荐，多轮会话）
+
+**POST** `/v1/responses`
+
+与 OpenAI Responses API 兼容。代理在首轮生成 `resp_` 开头的 `id` 并缓存 Monica 的 `conversation_id` 与消息链；后续请求传 `previous_response_id` 即可续聊，**无需在 `messages` 里重复携带完整历史**，更接近 Monica 原生协议。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `model` | string | 是 | 模型 ID |
+| `input` | string 或 message 数组 | 是 | 本轮用户输入 |
+| `instructions` | string | 否 | 系统指令（仅首轮生效，会拼到首条用户消息） |
+| `previous_response_id` | string | 否 | 上一轮响应的 `id`，用于续聊 |
+| `stream` | boolean | 否 | 是否流式返回 |
+
+**首轮示例：**
+
+```bash
+curl -X POST "http://ip:8080/v1/responses" \
+  -H "Authorization: Bearer YOUR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.5",
+    "input": "hi",
+    "stream": false
+  }'
+```
+
+**续轮示例（使用上一轮返回的 `id`）：**
+
+```bash
+curl -X POST "http://ip:8080/v1/responses" \
+  -H "Authorization: Bearer YOUR_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.5",
+    "input": "哈哈",
+    "previous_response_id": "resp_xxxxxxxx",
+    "stream": false
+  }'
+```
+
+**响应字段（非流式）：** `id`、`output_text`、`output`、`usage` 等，与 OpenAI Responses API 一致。
+
+**流式：** 返回 `text/event-stream`，事件类型含 `response.created`、`response.output_text.delta`、`response.completed`。
+
+会话缓存默认保留 7 天（与 OpenAI `previous_response_id` 有效期类似）。设置 `"store": false` 可不缓存会话。
+
+### 3. 聊天补全（对话）
 
 **POST** `/v1/chat/completions`
+
+> 仍支持，但每次请求会将 `messages` 全量转为 Monica `items`，并新建 `conversation_id`。多轮对话更推荐使用 `/v1/responses`。
 
 **请求体参数（与 OpenAI 兼容）：**
 

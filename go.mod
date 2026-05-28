@@ -7,12 +7,14 @@ require (
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.13.3
+	github.com/openai/openai-go/v3 v3.37.0
 	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/samber/lo v1.49.0
-	github.com/sashabaranov/go-openai v1.39.1
 )
 
-require github.com/cespare/xxhash/v2 v2.3.0
+require (
+	github.com/cespare/xxhash/v2 v2.3.0
+)
 
 require github.com/dlclark/regexp2 v1.10.0 // indirect
 
